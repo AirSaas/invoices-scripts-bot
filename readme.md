@@ -1,89 +1,71 @@
-# Playwright Invoice Automation Bot
+# Invoice Automation Bot
 
-This is an automated bot designed to log into specific websites, locate, and download invoice files (PDFs). It uses OpenAI's GPT models to dynamically identify download elements, making it robust against minor website structure changes. The bot concludes by sending a summary email via Gmail with the downloaded invoices and a log file as attachments.
+Automated bot that logs into websites, downloads invoices using AI, and sends them via email.
 
----
+## Features
 
-## Key Features
-
-- **AI-Powered Selectors**: Uses OpenAI to analyze page HTML and generate robust CSS selectors for download links/buttons.
-- **Persistent Authentication**: Leverages Playwright's persistent context to reuse browser sessions, minimizing the need for repeated logins.
-- **Robust Download Handling**: Manages multiple download scenarios, including direct links, click-triggered downloads, new tabs, and iframes.
-- **Comprehensive Logging**: Records every significant action, success, and failure into a dated log file for easy debugging.
-- **Email Reporting**: Automates sending a summary email through the Gmail web interface, attaching all downloaded invoices and the session log.
-- **Scalable Structure**: Organized to easily add new website scripts without modifying the core logic.
-
----
+- **AI-Powered**: Uses OpenAI to identify download elements
+- **Auto-Login**: Handles Google OAuth authentication
+- **Smart Detection**: Automatically detects if login is needed
+- **Email Reports**: Sends invoices with logs via Gmail
+- **Persistent Sessions**: Reuses browser sessions
 
 ## Project Structure
 
 ```
 factures-bot/
-├─ factures/
-│ └─ sejda/
-├─ logs/
-│ └─ log-YYYY-MM-DD.txt
-├─ sites/
-│ └─ sejda.js
-├─ utils/
-│ ├─ logger.js
-│ ├─ selectorAI.js
-│ └─ download.js
-├─ user-data/
-├─ main.js
-├─ package.json
-└─ README.md
+├─ factures/          # Downloaded invoices
+├─ logs/              # Log files
+├─ sites/             # Site-specific scripts
+├─ utils/             # Utility functions
+├─ user-data/         # Browser session data
+├─ main.js            # Main entry point
+├─ auth.js            # Authentication script
+├─ package.json       # Dependencies
+└─ .env.example       # Environment variables template
 ```
 
----
+## Quick Start
 
-## Setup and Installation
+1. **Install**
+   ```bash
+   npm install
+   ```
 
-1.  **Clone the Repository**
-    ```bash
-    git clone <this-repo-url>
-    cd factures-bot
-    ```
+2. **Configure**
+   ```bash
+   # Create .env file with your settings based in .env.example file
+   ```
 
-2.  **Install Dependencies**
-    ```bash
-    npm install
-    ```
+3. **Authenticate** (first time only)
+   ```bash
+   npm run auth
+   ```
 
-3.  **Set Environment Variables**
-    You must set your OpenAI API key as an environment variable. Do not hardcode it.
+4. **Run**
+   ```bash
+   npm start
+   ```
 
-    - **Linux/macOS**: `export OPENAI_API_KEY='your-secret-key'`
-    - **Windows (PowerShell)**: `$env:OPENAI_API_KEY='your-secret-key'`
+## Commands
 
-4.  **One-Time Authentication**
-    You need to log into the target websites (e.g., Sejda) and Gmail once to save the session. Run the `auth` script:
-    ```bash
-    npm run auth
-    ```
-    This will open a Chrome window. Log into all necessary websites, then close the window. Your session will be saved in the `user-data` directory.
+- `npm start` - Run the bot
+- `npm run auth` - Authenticate manually in all pages
 
----
+## How It Works
 
-## Usage
+1. **Check Auth**: Goes to billing page, detects if login needed
+2. **Auto-Login**: If needed, handles Google OAuth automatically
+3. **Download**: Uses AI to find and download invoices
+4. **Email**: Sends results with logs attached
 
-To run the bot, execute the main script:
-```bash
-npm start
-```
-Or directly:
-```bash
-node main.js
-```
-The bot will launch, perform the defined tasks, download the files, and send the final email report.
+## Troubleshooting
 
----
+- **Chrome Profile**: Close all Chrome windows if "Profile in use" error
+- **Login Issues**: Run `npm run auth` to re-authenticate manually in all pages
 
-## Configuration
+## Adding New Sites
 
-- **Site Credentials**: **WARNING:** Credentials are currently stored in plain text within each site script (e.g., `sites/sejda.js`). This is not secure. For production use, source these from a secure vault or environment variables.
-- **Email Recipient**: The recipient's email address is set in `main.js`. Modify the `RECIPIENT_EMAIL` constant as needed.
-- **Adding a New Site**:
-  1. Create a new file in the `sites/` directory (e.g., `newsite.js`).
-  2. Implement the `run` function following the structure of `sejda.js`.
-  3. Import and call your new site's `run` function within `main.js`.
+1. Create `sites/newsite.js`
+2. Implement `run` function (see `sejda.js` for example)
+3. Add to `scraperRunner.js`
