@@ -6,6 +6,7 @@ const openai = new OpenAI({
 });
 
 const model = "gpt-4o-mini";
+//const model = "gpt-5";
 
 async function findCandidateElements(html) {
   const prompt = `Analiza el siguiente HTML y devuelve un array JSON de objetos llamado 'candidates'. Cada objeto debe representar un elemento que probablemente sea un enlace o botón para descargar una factura en PDF o un archivo similar. Incluye solo elementos con texto como "factura", "invoice", "descargar", "download", "PDF", o con atributos href ó onclick a "window.open" que apunten a una descarga.

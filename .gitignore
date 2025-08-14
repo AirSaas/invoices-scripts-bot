@@ -55,9 +55,7 @@ Thumbs.db
 *.temp
 
 # Logs del proyecto
-logs/*.log
-logs/*.txt
-logs/dropcontact-*.html
+logs/*
 
 # Archivos descargados (facturas y documentos)
 factures/
