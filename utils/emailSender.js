@@ -5,28 +5,54 @@ async function sendEmail(browser, attachments) {
   log("GMAIL_START");
   const page = await browser.newPage();
   
-  // Suprimir logs de console de la página para evitar spam en logs
-  page.on('console', () => {}); // Ignorar todos los console.log de la página
-  page.on('pageerror', () => {}); // Ignorar errores de la página
+  // Suppress page console logs to avoid spam in logs
+  page.on('console', () => {}); // Ignore all console.log from page
+  page.on('pageerror', () => {}); // Ignore page errors
   
   try {
     const GMAIL_COMPOSE_URL = process.env.GMAIL_COMPOSE_URL;
     const RECIPIENT_EMAIL = process.env.RECIPIENT_EMAIL;
 
-    await page.goto(GMAIL_COMPOSE_URL);
+    // NEW: First go to Gmail main to handle authentication if needed
+    log("GMAIL_AUTH: Starting Gmail authentication process...");
     
-    // Esperar a que la página cargue (con timeout más generoso y estrategia diferente)
+    // Go to Gmail main instead of directly to compose
+    const gmailMainUrl = 'https://mail.google.com';
+    await page.goto(gmailMainUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    log("GMAIL_AUTH: Gmail main page loaded");
+    
+    // Check if we need authentication
+    const currentUrl = page.url();
+    log(`GMAIL_AUTH: Current URL: ${currentUrl}`);
+    
+    if (currentUrl.includes('accounts.google.com') || currentUrl.includes('signin') || currentUrl.includes('login')) {
+      log("GMAIL_AUTH: Authentication required, handling login...");
+      await handleGmailAuthentication(page);
+      
+      // After authentication, go to Gmail main
+      await page.goto(gmailMainUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      log("GMAIL_AUTH: Redirected to Gmail main page after authentication");
+      await page.waitForTimeout(3000);
+    } else {
+      log("GMAIL_AUTH: Already authenticated, proceeding...");
+    }
+    
+    // Now go to compose page
+    log("GMAIL_COMPOSE: Going to compose page...");
+    await page.goto(GMAIL_COMPOSE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    
+    // Wait for page to load (with more generous timeout and different strategy)
     try {
       await page.waitForLoadState('domcontentloaded', { timeout: 15000 });
       log("GMAIL_PAGE_DOM_LOADED");
       
-      // Esperar a que aparezca algún elemento clave de Gmail (múltiples idiomas)
+      // Wait for key Gmail elements to appear (multiple languages)
       const composeSelectors = [
-        'div[role="region"][aria-label*="Mensaje"]', // Español
-        'div[role="region"][aria-label*="Message"]', // Inglés  
-        'div[role="region"][aria-label*="message"]', // Inglés (minúscula)
-        'div[role="region"][aria-label*="Rédiger"]', // Francés - "Redactar"
-        'div[role="region"][aria-label*="Composer"]' // Francés - "Componer"
+        'div[role="region"][aria-label*="Mensaje"]', // Spanish
+        'div[role="region"][aria-label*="Message"]', // English  
+        'div[role="region"][aria-label*="message"]', // English (lowercase)
+        'div[role="region"][aria-label*="Rédiger"]', // French - "Draft"
+        'div[role="region"][aria-label*="Composer"]' // French - "Compose"
       ];
       
       let composeFound = false;
@@ -37,7 +63,7 @@ async function sendEmail(browser, attachments) {
           composeFound = true;
           break;
         } catch (e) {
-          // Continuar con el siguiente selector
+          // Continue with next selector
         }
       }
       
@@ -46,27 +72,27 @@ async function sendEmail(browser, attachments) {
       }
     } catch (loadError) {
       log(`GMAIL_LOAD_WARNING: ${loadError.message}`);
-      // Continuar de todas formas, puede que ya esté cargado
+      // Continue anyway, it might already be loaded
       await page.waitForTimeout(2000);
     }
 
-    // Debug: Ver qué elementos están disponibles
+    // Debug: See what elements are available
     const pageTitle = await page.title();
     log(`GMAIL_PAGE_TITLE: ${pageTitle}`);
 
-    // Rellenar campo "Para"
+    // Fill "To" field
     await fillToField(page, RECIPIENT_EMAIL);
     
-    // Rellenar campo "Asunto"
+    // Fill "Subject" field
     await fillSubjectField(page);
     
-    // Rellenar cuerpo del mensaje
+    // Fill message body
     await fillBodyField(page, attachments);
     
-    // Adjuntar archivos
+    // Attach files
     await attachFiles(page, attachments);
     
-    // Enviar correo
+    // Send email
     await sendEmailMessage(page);
 
   } catch (error) {
@@ -164,9 +190,8 @@ async function fillBodyField(page, attachments) {
   }
 
   if (bodyField) {
-    const body = `Resumen de la ejecución de bots de descarga.\n\nArchivos adjuntos:\n${attachments
-      .map((p) => path.basename(p))
-      .join("\n")}\n\nIncluye:\n- Facturas de Dropcontact\n- Facturas de Fullenrich\n- Facturas de Hyperline\n- Facturas de BetterContact\n- Facturas de Sejda`;
+    // Generate dynamic report based on downloaded files
+    const body = generateDynamicEmailBody(attachments);
     await bodyField.click();
     await bodyField.fill(body);
     log(`GMAIL_BODY_FILLED`);
@@ -369,6 +394,282 @@ async function checkForEmailErrors(page) {
     } catch (e) {
       // No se encontró un error con este selector, continuar con el siguiente
     }
+  }
+}
+
+// NEW FUNCTION: Generate dynamic email body based on downloaded files
+function generateDynamicEmailBody(attachments) {
+  // Define all expected sites
+  const expectedSites = [
+    { name: 'Dropcontact', folder: 'dropcontact', displayName: 'Dropcontact' },
+    { name: 'Fullenrich', folder: 'fullenrich', displayName: 'Fullenrich' },
+    { name: 'Hyperline', folder: 'hyperline', displayName: 'Hyperline' },
+    { name: 'BetterContact', folder: 'bettercontact', displayName: 'BetterContact' },
+    { name: 'Sejda', folder: 'sejda', displayName: 'Sejda' },
+    { name: 'Dedupe', folder: 'dedupe', displayName: 'Dedupe' }
+  ];
+
+  // Analyze downloaded files by site
+  const siteAnalysis = expectedSites.map(site => {
+    const siteFiles = attachments.filter(file => 
+      file.includes(`/factures/${site.folder}/`) || 
+      file.includes(`\\factures\\${site.folder}\\`)
+    );
+    
+    return {
+      ...site,
+      files: siteFiles,
+      hasFiles: siteFiles.length > 0,
+      fileCount: siteFiles.length
+    };
+  });
+
+  // Generate email body
+  let body = `Bot Execution Summary\n\n`;
+  
+  // Attached files section
+  if (attachments.length > 0) {
+    body += `📎 Attached Files (${attachments.length} total):\n`;
+    attachments.forEach((file, index) => {
+      const fileName = path.basename(file);
+      body += `${index + 1}. ${fileName}\n`;
+    });
+    body += '\n';
+  } else {
+    body += `📎 No files were downloaded during this execution.\n\n`;
+  }
+
+  // Site status report
+  body += `📊 Site Status Report:\n`;
+  body += `=====================\n`;
+  
+  siteAnalysis.forEach(site => {
+    if (site.hasFiles) {
+      body += `✅ ${site.displayName}: ${site.fileCount} invoice(s) downloaded\n`;
+    } else {
+      body += `❌ ${site.displayName}: No invoices available or download failed\n`;
+    }
+  });
+
+  body += `\n`;
+  
+  // Summary
+  const successfulSites = siteAnalysis.filter(site => site.hasFiles);
+  const failedSites = siteAnalysis.filter(site => !site.hasFiles);
+  
+  body += `📈 Summary:\n`;
+  body += `- Successful downloads: ${successfulSites.length}/${expectedSites.length} sites\n`;
+  body += `- Failed downloads: ${failedSites.length}/${expectedSites.length} sites\n`;
+  body += `- Total files: ${attachments.length}\n`;
+  
+  // Add timestamp
+  const timestamp = new Date().toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short'
+  });
+  
+  body += `\n⏰ Execution completed: ${timestamp}\n`;
+  
+  // Add note about failed sites
+  if (failedSites.length > 0) {
+    body += `\n⚠️  Note: Sites with failed downloads may require manual authentication or have no invoices available.\n`;
+  }
+
+  return body;
+}
+
+// NEW FUNCTION: Handle Gmail authentication
+async function handleGmailAuthentication(page) {
+  log("GMAIL_AUTH: Starting Gmail authentication...");
+  
+  try {
+    // Wait for authentication page to load
+    await page.waitForTimeout(3000);
+    
+    // Check if we're on Google account selection page
+    const currentUrl = page.url();
+    log(`GMAIL_AUTH: Current URL during authentication: ${currentUrl}`);
+    
+    if (currentUrl.includes('accounts.google.com')) {
+      log("GMAIL_AUTH: Google account selection page detected");
+      
+      // If there are multiple accounts, search and select the specific account
+      const targetEmail = process.env.GMAIL_EMAIL;
+      if (targetEmail) {
+        log(`GMAIL_AUTH: Looking for account: ${targetEmail}`);
+        
+        // Wait for account options to appear
+        await page.waitForTimeout(2000);
+        
+        // Search for specific account by email using multiple selectors
+        const accountSelectors = [
+          `[data-email="${targetEmail}"]`,
+          `[aria-label*="${targetEmail}"]`,
+          `div:has-text("${targetEmail}")`,
+          `[data-identifier="${targetEmail}"]`,
+          `div[role="button"]:has-text("${targetEmail}")`,
+          `button:has-text("${targetEmail}")`
+        ];
+        
+        let accountFound = false;
+        for (const selector of accountSelectors) {
+          try {
+            await page.waitForSelector(selector, { timeout: 3000 });
+            log(`GMAIL_AUTH: Target account found with selector: ${selector}`);
+            await page.click(selector);
+            log("GMAIL_AUTH: Target account selected");
+            accountFound = true;
+            break;
+          } catch (selectorError) {
+            log(`GMAIL_AUTH: Selector ${selector} failed: ${selectorError.message}`);
+            continue;
+          }
+        }
+        
+        if (!accountFound) {
+          log(`GMAIL_AUTH: Target account not found: ${targetEmail}`);
+          log("GMAIL_AUTH: Continuing with first available account");
+          
+          // Try to click on first available account
+          try {
+            const firstAccountSelector = 'div[role="button"], button, div[data-email], div[aria-label]';
+            await page.waitForSelector(firstAccountSelector, { timeout: 5000 });
+            await page.click(firstAccountSelector);
+            log("GMAIL_AUTH: First available account selected");
+          } catch (firstAccountError) {
+            log(`GMAIL_AUTH: First account selection failed: ${firstAccountError.message}`);
+          }
+        }
+      }
+      
+      // Wait for account selection to complete
+      await page.waitForTimeout(3000);
+      
+      // Check if there's a "Next" or "Continue" button after selecting account
+      try {
+        const nextButtonSelector = 'button:has-text("Next"), button:has-text("Continue"), button:has-text("Siguiente"), button:has-text("Continuar")';
+        await page.waitForSelector(nextButtonSelector, { timeout: 3000 });
+        log("GMAIL_AUTH: Next button found, clicking...");
+        await page.click(nextButtonSelector);
+        await page.waitForTimeout(3000);
+      } catch (nextButtonError) {
+        log(`GMAIL_AUTH: No next button: ${nextButtonError.message}`);
+      }
+      
+      // NEW: Handle Gmail password field if it appears
+      log("GMAIL_AUTH: Checking for password field...");
+      
+      try {
+        // Wait for password field to appear
+        const passwordSelectors = [
+          'input[type="password"]',
+          'input[name="password"]',
+          'input[aria-label*="password"]',
+          'input[aria-label*="contraseña"]',
+          'input[placeholder*="password"]',
+          'input[placeholder*="contraseña"]',
+          'input[id*="password"]',
+          'input[data-testid*="password"]'
+        ];
+        
+        let passwordFieldFound = false;
+        for (const selector of passwordSelectors) {
+          try {
+            await page.waitForSelector(selector, { timeout: 3000 });
+            log(`GMAIL_AUTH: Password field found with selector: ${selector}`);
+            
+            // Get password from environment variable
+            const password = process.env.GMAIL_PSW;
+            if (!password) {
+              log("GMAIL_AUTH: WARNING: GMAIL_PSW environment variable not set");
+              throw new Error('GMAIL_PSW environment variable is required for password field');
+            }
+            
+            // Clear field and type password
+            await page.fill(selector, '');
+            await page.type(selector, password, { delay: 100 });
+            log("GMAIL_AUTH: Password entered successfully");
+            
+            passwordFieldFound = true;
+            break;
+            
+          } catch (selectorError) {
+            log(`GMAIL_AUTH: Password selector ${selector} failed: ${selectorError.message}`);
+            continue;
+          }
+        }
+        
+        if (passwordFieldFound) {
+          // Search and click "Next" or "Continue" button after password
+          log("GMAIL_AUTH: Looking for next button after password...");
+          
+          const nextAfterPasswordSelectors = [
+            'button:has-text("Next")',
+            'button:has-text("Continue")',
+            'button:has-text("Siguiente")',
+            'button:has-text("Continuar")',
+            'button[type="submit"]',
+            'input[type="submit"]',
+            'div[role="button"]:has-text("Next")',
+            'div[role="button"]:has-text("Continue")'
+          ];
+          
+          let nextButtonClicked = false;
+          for (const selector of nextAfterPasswordSelectors) {
+            try {
+              await page.waitForSelector(selector, { timeout: 3000 });
+              log(`GMAIL_AUTH: Next button after password found: ${selector}`);
+              await page.click(selector);
+              log("GMAIL_AUTH: Next button after password clicked");
+              nextButtonClicked = true;
+              break;
+            } catch (selectorError) {
+              log(`GMAIL_AUTH: Next button selector ${selector} failed: ${selectorError.message}`);
+              continue;
+            }
+          }
+          
+          if (!nextButtonClicked) {
+            log("GMAIL_AUTH: WARNING: Could not find next button after password, continuing...");
+          }
+          
+          // Wait for password to be processed
+          await page.waitForTimeout(5000);
+          
+        } else {
+          log("GMAIL_AUTH: No password field found, continuing with account selection only");
+        }
+        
+      } catch (passwordError) {
+        log(`GMAIL_AUTH: Password handling error: ${passwordError.message}`);
+        // Continue without handling password if there's an error
+      }
+      
+    } else {
+      log("GMAIL_AUTH: Not on Google accounts page, may already be authenticated");
+    }
+    
+    // Wait for authentication to complete
+    await page.waitForTimeout(5000);
+    
+    // Verify if authentication was successful
+    const finalUrl = page.url();
+    log(`GMAIL_AUTH: Final URL after authentication: ${finalUrl}`);
+    
+    if (finalUrl.includes('accounts.google.com') || finalUrl.includes('signin') || finalUrl.includes('login')) {
+      throw new Error('Gmail authentication failed - still on login or Google page');
+    }
+    
+    log("GMAIL_AUTH: Gmail authentication successful");
+    return true;
+    
+  } catch (error) {
+    log(`GMAIL_AUTH: Authentication error: ${error.message}`);
+    throw error;
   }
 }
 

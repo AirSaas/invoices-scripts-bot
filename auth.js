@@ -1,6 +1,7 @@
 require("dotenv").config();
 const { log } = require("./utils/logger");
 const { createBrowser } = require("./utils/browserConfig");
+const ProfileManager = require("./utils/profileManager");
 
 async function auth() {
   log("===== AUTHENTICATION SCRIPT STARTED =====");
@@ -13,15 +14,32 @@ async function auth() {
   );
   log("");
 
+  // Initialize profile manager
+  const profileManager = new ProfileManager();
+  
+  // Show profile selection menu
+  log("🔍 Detecting available Chrome profiles...");
+  const selectedProfile = await profileManager.showProfileMenu();
+  
+  // Validate selected profile
+  try {
+    profileManager.validateProfile(selectedProfile);
+  } catch (error) {
+    log(`❌ Error with selected profile: ${error.message}`);
+    process.exit(1);
+  }
+  
+  log(`\n🔐 Starting authentication with profile: ${selectedProfile.description}`);
+
   let browser;
   try {
-    // Crear y configurar el navegador
-    browser = await createBrowser();
+    // Create and configure browser with selected profile
+    browser = await createBrowser(selectedProfile);
 
     log("===== BROWSER OPENED =====");
     log("Opening required websites in separate tabs...");
 
-    // Lista de URLs que necesitan autenticación
+    // List of URLs that need authentication
     const authUrls = [
       {
         name: "BetterContact Billing",
@@ -60,7 +78,7 @@ async function auth() {
       },
     ];
 
-    // Abrir cada URL en una nueva pestaña
+    // Open each URL in a new tab
     for (const site of authUrls) {
       try {
         log(`Opening ${site.name}: ${site.url}`);
@@ -71,7 +89,7 @@ async function auth() {
         });
         log(`✓ ${site.name} opened successfully`);
 
-        // Esperar un poco entre cada pestaña para evitar sobrecarga
+        // Wait a bit between each tab to avoid overload
         await page.waitForTimeout(2000);
       } catch (error) {
         log(`✗ Error opening ${site.name}: ${error.message}`);
@@ -92,15 +110,15 @@ async function auth() {
       "IMPORTANT: Do NOT close this terminal window until you're done with authentication!"
     );
 
-    // Mantener el navegador abierto hasta que el usuario lo cierre
-    // Usar un enfoque más simple y confiable
+    // Keep browser open until user closes it
+    // Use a simpler and more reliable approach
     log("Waiting for browser to be closed manually...");
     log("Close the browser window when you're done with authentication.");
 
-    // Mantener el proceso activo indefinidamente hasta que el usuario cierre el navegador
-    // o presione Ctrl+C en la terminal
+    // Keep process active indefinitely until user closes browser
+    // or presses Ctrl+C in terminal
     await new Promise((resolve) => {
-      // Solo escuchar eventos de cierre del proceso
+      // Only listen for process close events
       const cleanup = () => {
         log("Received signal to close, cleaning up...");
         resolve();
@@ -109,7 +127,7 @@ async function auth() {
       process.on("SIGINT", cleanup);
       process.on("SIGTERM", cleanup);
 
-      // También escuchar si el navegador se cierra por alguna razón externa
+      // Also listen if browser closes for any external reason
       browser.on("disconnected", () => {
         log("Browser disconnected, authentication session may be lost");
         cleanup();
@@ -144,7 +162,7 @@ async function auth() {
   }
 }
 
-// Ejecutar la función de autenticación
+// Execute authentication function
 auth().catch((error) => {
   log(`FATAL ERROR: ${error.message}`);
   process.exit(1);

@@ -77,7 +77,102 @@ async function handleLogin(page) {
   await continueButton.click();
   log(`${SITE_NAME.toUpperCase()} LOGIN: Continue button clicked`);
   
-  // Después de hacer clic en Continue, Google OAuth se maneja automáticamente
+  // Después de hacer clic en Continue, esperar a que se procese
+  log(`${SITE_NAME.toUpperCase()} LOGIN: Waiting for email processing...`);
+  await page.waitForTimeout(3000);
+  
+  // NUEVO: Verificar si aparece un campo de contraseña después del email
+  log(`${SITE_NAME.toUpperCase()} LOGIN: Checking for password field after email...`);
+  
+  try {
+    // Buscar campo de contraseña que pueda aparecer después del email
+    const passwordSelectors = [
+      'input[type="password"]',
+      'input[name="password"]',
+      'input[aria-label*="password"]',
+      'input[aria-label*="contraseña"]',
+      'input[placeholder*="password"]',
+      'input[placeholder*="contraseña"]',
+      'input[id*="password"]',
+      'input[data-testid*="password"]'
+    ];
+    
+    let passwordFieldFound = false;
+    for (const selector of passwordSelectors) {
+      try {
+        await page.waitForSelector(selector, { timeout: 3000 });
+        log(`${SITE_NAME.toUpperCase()} LOGIN: Password field found with selector: ${selector}`);
+        
+        // Obtener la contraseña de la variable de entorno
+        const password = process.env.FULLENRICH_PSW;
+        if (!password) {
+          log(`${SITE_NAME.toUpperCase()} LOGIN: WARNING: FULLENRICH_PSW environment variable not set`);
+          throw new Error('FULLENRICH_PSW environment variable is required for password field');
+        }
+        
+        // Limpiar el campo y escribir la contraseña
+        await page.fill(selector, '');
+        await page.type(selector, password, { delay: 100 });
+        log(`${SITE_NAME.toUpperCase()} LOGIN: Password entered successfully`);
+        
+        passwordFieldFound = true;
+        break;
+        
+      } catch (selectorError) {
+        log(`${SITE_NAME.toUpperCase()} LOGIN: Password selector ${selector} failed: ${selectorError.message}`);
+        continue;
+      }
+    }
+    
+    if (passwordFieldFound) {
+      // Buscar y hacer clic en el botón "Sign In" o "Login" después de la contraseña
+      log(`${SITE_NAME.toUpperCase()} LOGIN: Looking for sign in button after password...`);
+      
+      const signInAfterPasswordSelectors = [
+        'button:has-text("Sign In")',
+        'button:has-text("Sign in")',
+        'button:has-text("Login")',
+        'button:has-text("Log in")',
+        'button:has-text("Continue")',
+        'button:has-text("Submit")',
+        'button[type="submit"]',
+        'input[type="submit"]',
+        'div[role="button"]:has-text("Sign In")',
+        'div[role="button"]:has-text("Login")'
+      ];
+      
+      let signInButtonClicked = false;
+      for (const selector of signInAfterPasswordSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 3000 });
+          log(`${SITE_NAME.toUpperCase()} LOGIN: Sign in button after password found: ${selector}`);
+          await page.click(selector);
+          log(`${SITE_NAME.toUpperCase()} LOGIN: Sign in button after password clicked`);
+          signInButtonClicked = true;
+          break;
+        } catch (selectorError) {
+          log(`${SITE_NAME.toUpperCase()} LOGIN: Sign in button selector ${selector} failed: ${selectorError.message}`);
+          continue;
+        }
+      }
+      
+      if (!signInButtonClicked) {
+        log(`${SITE_NAME.toUpperCase()} LOGIN: WARNING: Could not find sign in button after password, continuing...`);
+      }
+      
+      // Esperar a que se procese la contraseña
+      await page.waitForTimeout(5000);
+      
+    } else {
+      log(`${SITE_NAME.toUpperCase()} LOGIN: No password field found, continuing with email-only flow...`);
+    }
+    
+  } catch (passwordError) {
+    log(`${SITE_NAME.toUpperCase()} LOGIN: Password handling error: ${passwordError.message}`);
+    // Continuar sin manejar la contraseña si hay algún error
+  }
+  
+  // Después de manejar email y posible contraseña, Google OAuth se maneja automáticamente
   // Solo necesitamos esperar a que se complete el flujo de autenticación
   log(`${SITE_NAME.toUpperCase()} LOGIN: Waiting for Google OAuth to complete...`);
   

@@ -344,8 +344,8 @@ async function handleGoogleLogin(page) {
         }
       }
       
-      // Esperar a que se complete la autenticación
-      await page.waitForTimeout(5000);
+      // Esperar a que se complete la selección de cuenta
+      await page.waitForTimeout(3000);
       
       // Verificar si hay un botón "Next" o "Continue" después de seleccionar la cuenta
       try {
@@ -357,10 +357,102 @@ async function handleGoogleLogin(page) {
       } catch (nextButtonError) {
         log(`${SITE_NAME.toUpperCase()} NO_NEXT_BUTTON: ${nextButtonError.message}`);
       }
+      
+      // NUEVO: Manejar el campo de contraseña de Gmail si aparece
+      log(`${SITE_NAME.toUpperCase()} CHECKING_FOR_PASSWORD_FIELD...`);
+      
+      try {
+        // Esperar a que aparezca el campo de contraseña
+        const passwordSelectors = [
+          'input[type="password"]',
+          'input[name="password"]',
+          'input[aria-label*="password"]',
+          'input[aria-label*="contraseña"]',
+          'input[placeholder*="password"]',
+          'input[placeholder*="contraseña"]',
+          'input[id*="password"]',
+          'input[data-testid*="password"]'
+        ];
+        
+        let passwordFieldFound = false;
+        for (const selector of passwordSelectors) {
+          try {
+            await page.waitForSelector(selector, { timeout: 2000 });
+            log(`${SITE_NAME.toUpperCase()} PASSWORD_FIELD_FOUND with selector: ${selector}`);
+            
+            // Obtener la contraseña de la variable de entorno
+            const password = process.env.BETTERCONTACT_PSW;
+            if (!password) {
+              log(`${SITE_NAME.toUpperCase()} WARNING: BETTERCONTACT_PSW environment variable not set`);
+              throw new Error('BETTERCONTACT_PSW environment variable is required for password field');
+            }
+            
+            // Limpiar el campo y escribir la contraseña
+            await page.fill(selector, '');
+            await page.type(selector, password, { delay: 100 });
+            log(`${SITE_NAME.toUpperCase()} PASSWORD_ENTERED_SUCCESSFULLY`);
+            
+            passwordFieldFound = true;
+            break;
+            
+          } catch (selectorError) {
+            log(`${SITE_NAME.toUpperCase()} Password selector ${selector} failed: ${selectorError.message}`);
+            continue;
+          }
+        }
+        
+        if (passwordFieldFound) {
+          // Buscar y hacer clic en el botón "Next" o "Continue" después de la contraseña
+          log(`${SITE_NAME.toUpperCase()} LOOKING_FOR_NEXT_BUTTON_AFTER_PASSWORD...`);
+          
+          const nextAfterPasswordSelectors = [
+            'button:has-text("Next")',
+            'button:has-text("Continue")',
+            'button:has-text("Siguiente")',
+            'button:has-text("Continuar")',
+            'button[type="submit"]',
+            'input[type="submit"]',
+            'div[role="button"]:has-text("Next")',
+            'div[role="button"]:has-text("Continue")'
+          ];
+          
+          let nextButtonClicked = false;
+          for (const selector of nextAfterPasswordSelectors) {
+            try {
+              await page.waitForSelector(selector, { timeout: 3000 });
+              log(`${SITE_NAME.toUpperCase()} NEXT_BUTTON_AFTER_PASSWORD_FOUND: ${selector}`);
+              await page.click(selector);
+              log(`${SITE_NAME.toUpperCase()} NEXT_BUTTON_AFTER_PASSWORD_CLICKED`);
+              nextButtonClicked = true;
+              break;
+            } catch (selectorError) {
+              log(`${SITE_NAME.toUpperCase()} Next button selector ${selector} failed: ${selectorError.message}`);
+              continue;
+            }
+          }
+          
+          if (!nextButtonClicked) {
+            log(`${SITE_NAME.toUpperCase()} WARNING: Could not find next button after password, continuing...`);
+          }
+          
+          // Esperar a que se procese la contraseña
+          await page.waitForTimeout(5000);
+          
+        } else {
+          log(`${SITE_NAME.toUpperCase()} NO_PASSWORD_FIELD_FOUND: Continuing without password input`);
+        }
+        
+      } catch (passwordError) {
+        log(`${SITE_NAME.toUpperCase()} PASSWORD_HANDLING_ERROR: ${passwordError.message}`);
+        // Continuar sin manejar la contraseña si hay algún error
+      }
+      
     }
     
+    // Esperar a que se complete la autenticación
+    await page.waitForTimeout(5000);
+    
     // Verificar si la autenticación fue exitosa
-    await page.waitForTimeout(3000);
     const finalUrl = page.url();
     log(`${SITE_NAME.toUpperCase()} FINAL_URL_AFTER_LOGIN: ${finalUrl}`);
     
