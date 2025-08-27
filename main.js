@@ -4,9 +4,29 @@ const { createBrowser } = require('./utils/browserConfig');
 const { runAllScrapers } = require('./utils/scraperRunner');
 const { sendEmail } = require('./utils/emailSender');
 const ProfileManager = require('./utils/profileManager');
+const FolderManager = require('./utils/folderManager');
 
 async function main() {
   log("===== INVOICES BOT STARTED =====");
+  
+  // Initialize folder structure first
+  try {
+    const folderManager = new FolderManager();
+    log("🔧 Initializing required folders...");
+    await folderManager.initializeFolders();
+    
+    // Verify all folders exist
+    const folderStatus = folderManager.checkFoldersExist();
+    if (!folderStatus.allExist) {
+      log(`⚠️  WARNING: Some folders are missing: ${folderStatus.missingFolders.join(', ')}`);
+    } else {
+      log("✅ All required folders are ready");
+    }
+  } catch (error) {
+    log(`❌ CRITICAL ERROR: Failed to initialize folders: ${error.message}`);
+    log("The bot cannot run without proper folder structure");
+    process.exit(1);
+  }
   
   // Initialize profile manager
   const profileManager = new ProfileManager();

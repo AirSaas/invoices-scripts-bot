@@ -2,6 +2,7 @@ require("dotenv").config();
 const { log } = require("./utils/logger");
 const { createBrowser } = require("./utils/browserConfig");
 const ProfileManager = require("./utils/profileManager");
+const FolderManager = require("./utils/folderManager");
 
 async function auth() {
   log("===== AUTHENTICATION SCRIPT STARTED =====");
@@ -13,6 +14,25 @@ async function auth() {
     "After completing authentication, close the browser window manually to save your session."
   );
   log("");
+
+  // Initialize folder structure first
+  try {
+    const folderManager = new FolderManager();
+    log("🔧 Initializing required folders...");
+    await folderManager.initializeFolders();
+    
+    // Verify all folders exist
+    const folderStatus = folderManager.checkFoldersExist();
+    if (!folderStatus.allExist) {
+      log(`⚠️  WARNING: Some folders are missing: ${folderStatus.missingFolders.join(', ')}`);
+    } else {
+      log("✅ All required folders are ready");
+    }
+  } catch (error) {
+    log(`❌ CRITICAL ERROR: Failed to initialize folders: ${error.message}`);
+    log("The authentication script cannot run without proper folder structure");
+    process.exit(1);
+  }
 
   // Initialize profile manager
   const profileManager = new ProfileManager();
