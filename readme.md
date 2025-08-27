@@ -63,7 +63,6 @@ invoices-bot/
 │   └── scraperRunner.js   # Scraper orchestration
 ├── factures/              # Downloaded invoices (auto-created)
 ├── logs/                  # Execution logs (auto-created)
-├── user-data/             # Chrome profile data
 ├── main.js                # Main entry point
 ├── auth.js                # Authentication script
 └── manageProfiles.js      # Profile management script

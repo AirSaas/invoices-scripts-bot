@@ -13,8 +13,7 @@ class FolderManager {
       'factures/hyperline',
       'factures/bettercontact',
       'factures/sejda',
-      'factures/dedupe',
-      'user-data'
+      'factures/dedupe'
     ];
   }
 

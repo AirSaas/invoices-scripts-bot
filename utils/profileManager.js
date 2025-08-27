@@ -5,7 +5,6 @@ const { log } = require('./logger');
 
 class ProfileManager {
   constructor() {
-    this.profilesDir = path.join(__dirname, '..', 'user-data');
     this.chromeProfilesDir = path.join(process.env.HOME, 'Library', 'Application Support', 'Google', 'Chrome');
   }
 
@@ -111,24 +110,6 @@ class ProfileManager {
 
       askProfile();
     });
-  }
-
-  // Create new local profile (kept for compatibility but not used)
-  async createNewProfile(profileName) {
-    const profilePath = path.join(this.profilesDir, profileName);
-    
-    if (fs.existsSync(profilePath)) {
-      throw new Error(`Profile '${profileName}' already exists`);
-    }
-
-    fs.mkdirSync(profilePath, { recursive: true });
-    
-    return {
-      name: profileName,
-      path: profilePath,
-      type: 'local',
-      description: `Local Profile: ${profileName}`
-    };
   }
 
   // Validate that the selected profile is valid
