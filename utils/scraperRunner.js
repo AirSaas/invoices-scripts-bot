@@ -20,7 +20,7 @@ async function runAllScrapers(browser) {
     { name: 'Fullenrich', bot: fullenrichBot },
     { name: 'Hyperline', bot: hyperlineBot },
     { name: 'BetterContact', bot: bettercontactBot },
-    { name: 'Sejda', bot: sejdaBot },
+    //{ name: 'Sejda', bot: sejdaBot },
     { name: 'Dedupe', bot: dedupeBot }
   ];
 
