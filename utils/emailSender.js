@@ -9,6 +9,9 @@ async function sendEmail(browser, attachments) {
   page.on('console', () => {}); // Ignore all console.log from page
   page.on('pageerror', () => {}); // Ignore page errors
   
+  // Detect Gmail language
+  let gmailLanguage = 'en'; // Default to English
+  
   try {
     const GMAIL_COMPOSE_URL = process.env.GMAIL_COMPOSE_URL;
     const RECIPIENT_EMAIL = process.env.RECIPIENT_EMAIL;
@@ -40,6 +43,10 @@ async function sendEmail(browser, attachments) {
     // Now go to compose page
     log("GMAIL_COMPOSE: Going to compose page...");
     await page.goto(GMAIL_COMPOSE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    
+    // Detect Gmail language after compose page loads
+    gmailLanguage = await detectGmailLanguage(page);
+    log(`GMAIL_LANGUAGE_DETECTED: ${gmailLanguage}`);
     
     // Wait for page to load (with more generous timeout and different strategy)
     try {
@@ -103,15 +110,34 @@ async function sendEmail(browser, attachments) {
 }
 
 async function fillToField(page, recipientEmail) {
-  // Selectores basados en el HTML real proporcionado
+  // Selectores multiidioma para el campo "Para" - Priorizando francés
   const toSelectors = [
-    'input[aria-label="Destinatarios en Para"]', // Selector exacto del HTML
-    'input.agP.aFw', // Clase exacta del input
-    'input[peoplekit-id="BbVjBd"]', // ID específico
-    'textarea[name="to"]', // Selector clásico por si acaso
+    // Francés (prioritario)
+    'input[aria-label="Destinataires"]',
+    'input[aria-label="À"]',
+    'input[placeholder="Destinataires"]',
+    'input[placeholder="À"]',
+    'div[aria-label="Destinataires"]',
+    'div[aria-label="À"]',
+    // Inglés
+    'input[aria-label="Recipients"]',
+    'input[aria-label="To"]',
+    'input[placeholder="Recipients"]',
+    'input[placeholder="To"]',
+    'div[aria-label="Recipients"]',
+    'div[aria-label="To"]',
+    // Español
+    'input[aria-label="Destinatarios"]',
+    'input[aria-label="Para"]',
+    'input[placeholder="Destinatarios"]',
+    'input[placeholder="Para"]',
+    'div[aria-label="Destinatarios"]',
+    'div[aria-label="Para"]',
+    // Genéricos (solo los que funcionan)
     'input[name="to"]',
     'div[name="to"]',
-    'div[aria-label*="Para"]'
+    'input[role="combobox"]',
+    'div[role="combobox"]'
   ];
 
   let toField = null;
@@ -127,23 +153,42 @@ async function fillToField(page, recipientEmail) {
   }
 
   if (!toField) {
-    throw new Error('No se pudo encontrar el campo "Para" en Gmail');
+    log("GMAIL_TO_FIELD_NOT_FOUND: Trying alternative approach...");
+    
+    // Alternative approach: try to find any input field and click on it
+    try {
+      const anyInput = await page.locator('input, textarea, div[contenteditable="true"]').first();
+      await anyInput.click();
+      await page.keyboard.type(recipientEmail);
+      log(`GMAIL_TO_FILLED_ALTERNATIVE: ${recipientEmail}`);
+    } catch (altError) {
+      throw new Error(`No se pudo encontrar el campo "Para" en Gmail: ${altError.message}`);
+    }
+  } else {
+    // Rellenar el campo "Para"
+    await toField.click();
+    await toField.fill(recipientEmail);
+    log(`GMAIL_TO_FILLED: ${recipientEmail}`);
   }
-
-  // Rellenar el campo "Para"
-  await toField.click();
-  await toField.fill(recipientEmail);
-  log(`GMAIL_TO_FILLED: ${recipientEmail}`);
 }
 
 async function fillSubjectField(page) {
-  // Selectores para el asunto basados en el HTML real
+  // Selectores multiidioma para el campo "Asunto" - Priorizando francés
   const subjectSelectors = [
-    'input[name="subjectbox"]', // Selector exacto del HTML
-    'input.aoT', // Clase exacta del input de asunto
-    'input[placeholder="Asunto"]', // Placeholder exacto
-    'input[aria-label="Asunto"]', // Aria-label exacto
-    'input[aria-label*="Subject"]'
+    // Francés (prioritario)
+    'input[placeholder="Objet"]',
+    'input[aria-label="Objet"]',
+    'div[aria-label="Objet"]',
+    // Inglés
+    'input[placeholder="Subject"]',
+    'input[aria-label="Subject"]',
+    'div[aria-label="Subject"]',
+    // Español
+    'input[placeholder="Asunto"]',
+    'input[aria-label="Asunto"]',
+    'div[aria-label="Asunto"]',
+    // Genéricos (solo los que funcionan)
+    'input[name="subjectbox"]'
   ];
 
   let subjectField = null;
@@ -163,16 +208,30 @@ async function fillSubjectField(page) {
     await subjectField.click();
     await subjectField.fill(subject);
     log(`GMAIL_SUBJECT_FILLED: ${subject}`);
+  } else {
+    log("GMAIL_SUBJECT_FIELD_NOT_FOUND: Subject field not found, continuing...");
   }
 }
 
 async function fillBodyField(page, attachments) {
-  // Selectores para el cuerpo del mensaje basados en el HTML real
+  // Selectores multiidioma para el campo "Cuerpo del mensaje" - Priorizando francés
   const bodySelectors = [
-    'div[aria-label="Cuerpo del mensaje"]', // Aria-label exacto
-    'div.Am.aiL.Al.editable.LW-avf.tS-tW', // Clases exactas del div editable
-    'textarea[aria-label="Cuerpo del mensaje"]', // El textarea también
-    'textarea.Ak.aiL', // Clases del textarea
+    // Francés (prioritario)
+    'div[aria-label="Corps du message"]',
+    'textarea[aria-label="Corps du message"]',
+    'div[aria-label="Message"]',
+    'textarea[aria-label="Message"]',
+    // Inglés
+    'div[aria-label="Message body"]',
+    'textarea[aria-label="Message body"]',
+    'div[aria-label="Body"]',
+    'textarea[aria-label="Body"]',
+    // Español
+    'div[aria-label="Cuerpo del mensaje"]',
+    'textarea[aria-label="Cuerpo del mensaje"]',
+    'div[aria-label="Mensaje"]',
+    'textarea[aria-label="Mensaje"]',
+    // Genéricos (solo los que funcionan)
     'div[role="textbox"]',
     'div[contenteditable="true"]'
   ];
@@ -195,30 +254,60 @@ async function fillBodyField(page, attachments) {
     await bodyField.click();
     await bodyField.fill(body);
     log(`GMAIL_BODY_FILLED`);
+  } else {
+    log("GMAIL_BODY_FIELD_NOT_FOUND: Body field not found, trying alternative approach...");
+    
+    // Alternative approach: try to find any editable area
+    try {
+      const editableArea = await page.locator('div[contenteditable="true"], textarea').first();
+      await editableArea.click();
+      const body = generateDynamicEmailBody(attachments);
+      await page.keyboard.type(body);
+      log(`GMAIL_BODY_FILLED_ALTERNATIVE`);
+    } catch (altError) {
+      log(`GMAIL_BODY_FILLED_ALTERNATIVE_FAILED: ${altError.message}`);
+    }
   }
 }
 
 async function attachFiles(page, attachments) {
-  // Selectores para adjuntar archivos basados en el HTML real
+  // Selectores multiidioma para adjuntar archivos - Priorizando francés
   const attachSelectors = [
-    // Español
-    'div[data-tooltip="Adjuntar archivos"]', // Tooltip exacto
-    'div[aria-label="Adjuntar archivos"]', // Aria-label exacto
-    'div[command="Files"]', // Command exacto del HTML
-    'input[type="file"][name="Filedata"]', // Input file específico
-    // Inglés
-    'div[data-tooltip*="Attach"]',
-    'div[aria-label*="Attach"]',
-    'div[data-tooltip*="files"]',
-    'div[aria-label*="files"]',
-    // Francés
+    // Francés (prioritario)
+    'div[data-tooltip="Joindre des fichiers"]',
+    'div[aria-label="Joindre des fichiers"]',
+    'div[data-tooltip="Joindre"]',
+    'div[aria-label="Joindre"]',
     'div[data-tooltip*="Joindre"]',
     'div[aria-label*="Joindre"]',
     'div[data-tooltip*="fichiers"]',
     'div[aria-label*="fichiers"]',
     'div[data-tooltip*="Pièce"]',
     'div[aria-label*="Pièce"]',
-    // Genérico
+    // Inglés
+    'div[data-tooltip="Attach files"]',
+    'div[aria-label="Attach files"]',
+    'div[data-tooltip="Attach"]',
+    'div[aria-label="Attach"]',
+    'div[data-tooltip*="Attach"]',
+    'div[aria-label*="Attach"]',
+    'div[data-tooltip*="files"]',
+    'div[aria-label*="files"]',
+    'div[data-tooltip*="Attachment"]',
+    'div[aria-label*="Attachment"]',
+    // Español
+    'div[data-tooltip="Adjuntar archivos"]',
+    'div[aria-label="Adjuntar archivos"]',
+    'div[data-tooltip="Adjuntar"]',
+    'div[aria-label="Adjuntar"]',
+    'div[data-tooltip*="Adjuntar"]',
+    'div[aria-label*="Adjuntar"]',
+    'div[data-tooltip*="archivos"]',
+    'div[aria-label*="archivos"]',
+    'div[data-tooltip*="Archivo"]',
+    'div[aria-label*="Archivo"]',
+    // Genérico (solo los que funcionan)
+    'div[command="Files"]',
     'input[type="file"]'
   ];
 
@@ -252,24 +341,36 @@ async function attachFiles(page, attachments) {
 }
 
 async function sendEmailMessage(page) {
-  // Selectores para enviar basados en el HTML real
+  // Selectores multiidioma para enviar - Priorizando francés
   const sendSelectors = [
-    // Español
-    'div[data-tooltip="Enviar"]', // Tooltip exacto
-    'div[aria-label="Enviar"]', // Aria-label exacto
-    'div.T-I.J-J5-Ji.aoO.v7.T-I-atl.L3:has-text("Enviar")', // Clases exactas del botón
-    'div[role="button"]:has-text("Enviar")',
+    // Francés (prioritario)
+    'div[data-tooltip="Envoyer"]',
+    'div[aria-label="Envoyer"]',
+    'div[data-tooltip="Envoyer ‪(Ctrl-Enter)‬"]',
+    'div[aria-label="Envoyer ‪(Ctrl-Enter)‬"]',
+    'div[role="button"]:has-text("Envoyer")',
+    'button:has-text("Envoyer")',
+    'div.T-I.J-J5-Ji.aoO.v7.T-I-atl.L3:has-text("Envoyer")',
     // Inglés
     'div[data-tooltip="Send"]',
     'div[aria-label="Send"]',
-    'div[aria-label*="Send"]',
+    'div[data-tooltip="Send ‪(Ctrl-Enter)‬"]',
+    'div[aria-label="Send ‪(Ctrl-Enter)‬"]',
     'div[role="button"]:has-text("Send")',
+    'button:has-text("Send")',
     'div.T-I.J-J5-Ji.aoO.v7.T-I-atl.L3:has-text("Send")',
-    // Francés
-    'div[data-tooltip="Envoyer"]',
-    'div[aria-label="Envoyer"]',
-    'div[role="button"]:has-text("Envoyer")',
-    'div.T-I.J-J5-Ji.aoO.v7.T-I-atl.L3:has-text("Envoyer")'
+    // Español
+    'div[data-tooltip="Enviar"]',
+    'div[aria-label="Enviar"]',
+    'div[data-tooltip="Enviar ‪(Ctrl-Enter)‬"]',
+    'div[aria-label="Enviar ‪(Ctrl-Enter)‬"]',
+    'div[role="button"]:has-text("Enviar")',
+    'button:has-text("Enviar")',
+    'div.T-I.J-J5-Ji.aoO.v7.T-I-atl.L3:has-text("Enviar")',
+    // Genéricos (solo los que funcionan)
+    'div[role="button"][aria-label*="envoyer"]',
+    'div[role="button"][aria-label*="send"]',
+    'div[role="button"][aria-label*="enviar"]'
   ];
 
   let sendButton = null;
@@ -307,27 +408,45 @@ async function verifyEmailSent(page) {
     
     // Verificar si hay mensajes de confirmación o error
     const confirmationSelectors = [
-      // Español
-      'div:has-text("Mensaje enviado")',
-      'div:has-text("Enviado")',
-      'span:has-text("Mensaje enviado")',
-      'span:has-text("Enviado")',
-      'div[aria-label*="enviado"]',
-      'div[role="alert"]:has-text("enviado")',
+      // Francés (prioritario)
+      'div:has-text("Message envoyé")',
+      'div:has-text("Envoyé")',
+      'div:has-text("Message enregistré")',
+      'div:has-text("Enregistré")',
+      'span:has-text("Message envoyé")',
+      'span:has-text("Envoyé")',
+      'span:has-text("Message enregistré")',
+      'span:has-text("Enregistré")',
+      'div[aria-label*="envoyé"]',
+      'div[aria-label*="enregistré"]',
+      'div[role="alert"]:has-text("envoyé")',
+      'div[role="alert"]:has-text("enregistré")',
       // Inglés
       'div:has-text("Message sent")',
       'div:has-text("Sent")',
+      'div:has-text("Message saved")',
+      'div:has-text("Saved")',
       'span:has-text("Message sent")',
       'span:has-text("Sent")',
+      'span:has-text("Message saved")',
+      'span:has-text("Saved")',
       'div[aria-label*="sent"]',
+      'div[aria-label*="saved"]',
       'div[role="alert"]:has-text("sent")',
-      // Francés
-      'div:has-text("Message envoyé")',
-      'div:has-text("Envoyé")',
-      'span:has-text("Message envoyé")',
-      'span:has-text("Envoyé")',
-      'div[aria-label*="envoyé"]',
-      'div[role="alert"]:has-text("envoyé")'
+      'div[role="alert"]:has-text("saved")',
+      // Español
+      'div:has-text("Mensaje enviado")',
+      'div:has-text("Enviado")',
+      'div:has-text("Mensaje guardado")',
+      'div:has-text("Guardado")',
+      'span:has-text("Mensaje enviado")',
+      'span:has-text("Enviado")',
+      'span:has-text("Mensaje guardado")',
+      'span:has-text("Guardado")',
+      'div[aria-label*="enviado"]',
+      'div[aria-label*="guardado"]',
+      'div[role="alert"]:has-text("enviado")',
+      'div[role="alert"]:has-text("guardado")'
     ];
     
     let sentConfirmed = false;
@@ -347,7 +466,7 @@ async function verifyEmailSent(page) {
       
       // Verificar si aún estamos en la ventana de composición (lo que indicaría que no se envió)
       try {
-        await page.waitForSelector('div[data-tooltip="Enviar"]', { timeout: 2000 });
+        await page.waitForSelector('div[data-tooltip="Envoyer"]', { timeout: 2000 });
         log("GMAIL_SEND_FAILED: Still in compose window - email likely not sent");
       } catch (e) {
         log("GMAIL_SEND_UNKNOWN: Not in compose window, but no confirmation found");
@@ -366,8 +485,11 @@ async function verifyEmailSent(page) {
 
 async function checkForEmailErrors(page) {
   const errorSelectors = [
-    // Genérico
-    'div[role="alertdialog"]',
+    // Francés (prioritario)
+    'div[aria-label*="erreur"]',
+    'div[aria-label*="Erreur"]',
+    'div:has-text("Erreur")',
+    'div:has-text("erreur")',
     // Inglés
     'div[aria-label*="error"]',
     'div[aria-label*="Error"]',
@@ -378,11 +500,8 @@ async function checkForEmailErrors(page) {
     'div[aria-label*="Error"]',
     'div:has-text("Error")',
     'div:has-text("error")',
-    // Francés
-    'div[aria-label*="erreur"]',
-    'div[aria-label*="Erreur"]',
-    'div:has-text("Erreur")',
-    'div:has-text("erreur")'
+    // Genérico
+    'div[role="alertdialog"]'
   ];
   
   // Comprobar si hay mensajes de error en la interfaz de Gmail tras intentar enviar el correo
@@ -670,6 +789,46 @@ async function handleGmailAuthentication(page) {
   } catch (error) {
     log(`GMAIL_AUTH: Authentication error: ${error.message}`);
     throw error;
+  }
+}
+
+// NEW FUNCTION: Detect Gmail language
+async function detectGmailLanguage(page) {
+  try {
+    await page.waitForTimeout(2000); // Wait for page to load
+    
+    // Get page content to analyze language
+    const pageContent = await page.content();
+    const pageTitle = await page.title();
+    
+    log(`GMAIL_DETECTION: Page title: ${pageTitle}`);
+    
+    // Check for language indicators in content
+    if (pageContent.includes('Nouveau message') || 
+        pageContent.includes('Destinataires') || 
+        pageContent.includes('Objet') ||
+        pageContent.includes('Envoyer')) {
+      log("GMAIL_DETECTION: French language detected");
+      return 'fr';
+    } else if (pageContent.includes('Nuevo mensaje') || 
+               pageContent.includes('Destinatarios') || 
+               pageContent.includes('Asunto') ||
+               pageContent.includes('Enviar')) {
+      log("GMAIL_DETECTION: Spanish language detected");
+      return 'es';
+    } else if (pageContent.includes('New message') || 
+               pageContent.includes('Recipients') || 
+               pageContent.includes('Subject') ||
+               pageContent.includes('Send')) {
+      log("GMAIL_DETECTION: English language detected");
+      return 'en';
+    } else {
+      log("GMAIL_DETECTION: Language not detected, defaulting to English");
+      return 'en';
+    }
+  } catch (error) {
+    log(`GMAIL_DETECTION_ERROR: ${error.message}`);
+    return 'en'; // Default to English on error
   }
 }
 
