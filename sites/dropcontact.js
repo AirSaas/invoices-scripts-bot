@@ -72,6 +72,129 @@ function filterHtmlForAI(html) {
   return filtered;
 }
 
+// Function to check if we're on a login page
+async function isLoginPage(page) {
+  const currentUrl = page.url();
+  const title = await page.title();
+  
+  log(`${SITE_NAME.toUpperCase()} CHECKING_LOGIN_PAGE - URL: ${currentUrl}, TITLE: "${title}"`);
+  
+  const isLogin = currentUrl.includes('login') || 
+         currentUrl.includes('auth') || 
+         title.toLowerCase().includes('log in') ||
+         title.toLowerCase().includes('sign in') ||
+         title.toLowerCase().includes('connexion') ||
+         title.toLowerCase().includes('connection') ||
+         title.toLowerCase().includes('login');
+  
+  log(`${SITE_NAME.toUpperCase()} IS_LOGIN_PAGE: ${isLogin}`);
+  return isLogin;
+}
+
+// Function to handle Google login
+async function handleGoogleLogin(page) {
+  log(`${SITE_NAME.toUpperCase()} HANDLING_GOOGLE_LOGIN`);
+  
+  // Get the email from environment variable
+  const targetEmail = process.env.BETTERCONTACT_EMAIL;
+  if (!targetEmail) {
+    throw new Error('BETTERCONTACT_EMAIL environment variable is not set');
+  }
+  
+  log(`${SITE_NAME.toUpperCase()} TARGET_EMAIL: ${targetEmail}`);
+  
+  // Wait for the page to load completely
+  await page.waitForTimeout(3000);
+  
+  // Look for the "Continue with Google" button
+  const googleButtonSelectors = [
+    'button:has-text("Continue with Google")',
+    'button:has-text("Log in with Google")',
+    'button:has-text("Sign in with Google")',
+    '[data-testid="google-login"]',
+    'button[aria-label*="Google"]',
+    'button:has(img[alt*="Google"])',
+    'a:has-text("Continue with Google")',
+    'a:has-text("Log in with Google")',
+    'a:has-text("Sign in with Google")'
+  ];
+  
+  let googleButton = null;
+  for (const selector of googleButtonSelectors) {
+    try {
+      googleButton = await page.$(selector);
+      if (googleButton) {
+        log(`${SITE_NAME.toUpperCase()} GOOGLE_BUTTON_FOUND: ${selector}`);
+        break;
+      }
+    } catch (e) {
+      // Continue to next selector
+    }
+  }
+  
+  if (!googleButton) {
+    throw new Error('Google login button not found');
+  }
+  
+  // Click the Google button
+  await googleButton.click();
+  log(`${SITE_NAME.toUpperCase()} GOOGLE_BUTTON_CLICKED`);
+  
+  // Wait for Google account selection page
+  await page.waitForTimeout(5000);
+  
+  // Check if we're on Google account selection page
+  const currentUrl = page.url();
+  if (currentUrl.includes('accounts.google.com')) {
+    log(`${SITE_NAME.toUpperCase()} ON_GOOGLE_ACCOUNT_PAGE`);
+    
+    // Look for the target email in the account list
+    const emailSelectors = [
+      `[data-email="${targetEmail}"]`,
+      `[data-identifier="${targetEmail}"]`,
+      `div:has-text("${targetEmail}")`,
+      `[aria-label*="${targetEmail}"]`,
+      `div[role="button"]:has-text("${targetEmail}")`
+    ];
+    
+    let targetAccount = null;
+    for (const selector of emailSelectors) {
+      try {
+        targetAccount = await page.$(selector);
+        if (targetAccount) {
+          log(`${SITE_NAME.toUpperCase()} TARGET_ACCOUNT_FOUND: ${selector}`);
+          break;
+        }
+      } catch (e) {
+        // Continue to next selector
+      }
+    }
+    
+    if (targetAccount) {
+      // Click on the target account
+      await targetAccount.click();
+      log(`${SITE_NAME.toUpperCase()} TARGET_ACCOUNT_CLICKED`);
+      
+      // Wait for authentication to complete
+      await page.waitForTimeout(3000);
+      
+      // Wait for redirect back to dropcontact
+      await page.waitForNavigation({ timeout: 30000 });
+      log(`${SITE_NAME.toUpperCase()} REDIRECTED_BACK_TO_DROPCONTACT`);
+      
+      // Wait additional 3 seconds as requested
+      await page.waitForTimeout(3000);
+      
+    } else {
+      throw new Error(`Target email ${targetEmail} not found in Google account selection`);
+    }
+  } else {
+    log(`${SITE_NAME.toUpperCase()} NOT_ON_GOOGLE_ACCOUNT_PAGE, current URL: ${currentUrl}`);
+    // If not on Google account page, wait and continue
+    await page.waitForTimeout(3000);
+  }
+}
+
 async function run(context) {
   const page = await context.newPage();
   
@@ -115,6 +238,24 @@ async function run(context) {
       });
     }
 
+    // Check if we're on a login page after loading
+    const title = await page.title();
+    log(`${SITE_NAME.toUpperCase()} PAGE_TITLE: "${title}"`);
+    
+    if (await isLoginPage(page)) {
+      log(`${SITE_NAME.toUpperCase()} LOGIN_REQUIRED: Detected login page`);
+      
+      // Handle Google login
+      await handleGoogleLogin(page);
+      
+      // After login, navigate to billing page
+      await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      log(`${SITE_NAME.toUpperCase()} NAVIGATED_TO_BILLING_AFTER_LOGIN`);
+      
+      // Wait for billing page to load
+      await page.waitForTimeout(5000);
+    }
+
     const html = await page.content();
     log(`${SITE_NAME.toUpperCase()} HTML content fetched (${html.length} chars)`);
 
@@ -122,10 +263,6 @@ async function run(context) {
     if (html.length < 1000) {
       log(`${SITE_NAME.toUpperCase()} WARNING: HTML content seems too short, might be blocked or redirected`);
     }
-
-    // Verificar si estamos en la página correcta
-    const title = await page.title();
-    log(`${SITE_NAME.toUpperCase()} PAGE_TITLE: "${title}"`);
 
     // Filtrar el HTML para reducir el tamaño antes de enviarlo a la IA
     log(`${SITE_NAME.toUpperCase()} Filtering HTML to reduce size for AI...`);
