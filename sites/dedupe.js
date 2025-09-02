@@ -18,7 +18,7 @@ async function handleGoogleLogin(page) {
     log(`${SITE_NAME.toUpperCase()} LOGIN_PAGE_LOADED`);
     
     // Esperar un poco más para que se cargue completamente
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(6000);
     
     // Buscar botones de login con Google usando múltiples selectores
     const googleButtonSelectors = [
@@ -105,7 +105,7 @@ async function handleGoogleLogin(page) {
     }
     
     // Esperar a que se abra la ventana de selección de cuenta de Google
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(6000);
     
     // Verificar si estamos en la página de selección de cuenta de Google
     const currentUrl = page.url();
@@ -120,7 +120,7 @@ async function handleGoogleLogin(page) {
         log(`${SITE_NAME.toUpperCase()} LOOKING_FOR_ACCOUNT: ${targetEmail}`);
         
         // Esperar a que aparezcan las opciones de cuenta
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(5000);
         
         // Buscar la cuenta específica por email usando múltiples selectores
         const accountSelectors = [
@@ -164,7 +164,7 @@ async function handleGoogleLogin(page) {
       }
       
       // Esperar a que se complete la autenticación
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(8000);
       
       // Verificar si hay un botón "Next" o "Continue" después de seleccionar la cuenta
       try {
@@ -172,14 +172,14 @@ async function handleGoogleLogin(page) {
         await page.waitForSelector(nextButtonSelector, { timeout: 3000 });
         log(`${SITE_NAME.toUpperCase()} NEXT_BUTTON_FOUND, clicking...`);
         await page.click(nextButtonSelector);
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(5000);
       } catch (nextButtonError) {
         log(`${SITE_NAME.toUpperCase()} NO_NEXT_BUTTON: ${nextButtonError.message}`);
       }
     }
     
     // Verificar si la autenticación fue exitosa
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(6000);
     const finalUrl = page.url();
     log(`${SITE_NAME.toUpperCase()} FINAL_URL_AFTER_LOGIN: ${finalUrl}`);
     
@@ -238,6 +238,19 @@ function filterHtmlForAI(html) {
         lowerLine.includes('pay.stripe') ||
         lowerLine.includes('dedupe') ||
         lowerLine.includes('dedupe.ly') ||
+        lowerLine.includes('overview') ||
+        lowerLine.includes('download deduped csv') ||
+        lowerLine.includes('download csv') ||
+        lowerLine.includes('export csv') ||
+        lowerLine.includes('view invoice') ||
+        lowerLine.includes('download invoice') ||
+        lowerLine.includes('download receipt') ||
+        lowerLine.includes('billing history') ||
+        lowerLine.includes('payment history') ||
+        lowerLine.includes('transaction history') ||
+        lowerLine.includes('company settings') ||
+        lowerLine.includes('account settings') ||
+        lowerLine.includes('user settings') ||
         lowerLine.includes('<button') ||
         lowerLine.includes('</button>') ||
         lowerLine.includes('<a ') ||
@@ -247,6 +260,8 @@ function filterHtmlForAI(html) {
         lowerLine.includes('target=') ||
         lowerLine.includes('class="') ||
         lowerLine.includes('id="') ||
+        lowerLine.includes('data-testid=') ||
+        lowerLine.includes('aria-label=') ||
         lowerLine.includes('<table') ||
         lowerLine.includes('<tbody') ||
         lowerLine.includes('<tr') ||
@@ -332,7 +347,7 @@ async function run(context) {
         log(`${SITE_NAME.toUpperCase()} SKIPPING_LOGIN_PROCESS_AND_CONTINUING_DIRECTLY`);
         
         // Esperar un poco más para que cargue completamente (especialmente para SPAs)
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(8000);
         
         // CONTINUAR DIRECTAMENTE CON EL PROCESO DE BILLING
         // NO necesitamos ir a LOGIN_URL ni hacer login
@@ -362,12 +377,12 @@ async function run(context) {
             currentHtml.toLowerCase().includes('invoice') ||
             currentHtml.toLowerCase().includes('payment')) {
           log(`${SITE_NAME.toUpperCase()} BILLING_CONTENT_FOUND_IN_UNEXPECTED_URL: Continuing...`);
-          await page.waitForTimeout(5000);
+          await page.waitForTimeout(8000);
         } else {
           log(`${SITE_NAME.toUpperCase()} NO_BILLING_CONTENT_FOUND: Attempting login...`);
           await handleGoogleLogin(page);
           await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-          await page.waitForTimeout(5000);
+          await page.waitForTimeout(8000);
         }
       }
       
@@ -390,7 +405,7 @@ async function run(context) {
           waitUntil: 'domcontentloaded', 
           timeout: 30000 
         });
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(8000);
         
       } else {
         // Si no es un problema de autenticación, reintentar con estrategia diferente
@@ -399,11 +414,11 @@ async function run(context) {
           waitUntil: 'load', 
           timeout: 30000 
         });
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(8000);
       }
     }
 
-    const html = await page.content();
+    let html = await page.content();
     log(`${SITE_NAME.toUpperCase()} HTML content fetched (${html.length} chars)`);
 
     // Verificar si el HTML contiene contenido útil
@@ -442,7 +457,7 @@ async function run(context) {
         waitUntil: 'domcontentloaded', 
         timeout: 30000 
       });
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(8000);
       
       // Obtener el HTML actualizado después del login
       const updatedHtml = await page.content();
@@ -465,7 +480,7 @@ async function run(context) {
     // Verificar si es una SPA que necesita más tiempo para cargar
     if (html.includes('loading') || html.includes('spinner') || title.toLowerCase().includes('loading')) {
       log(`${SITE_NAME.toUpperCase()} SPA_DETECTED: Waiting additional time for content to load...`);
-      await page.waitForTimeout(10000);
+      await page.waitForTimeout(15000);
       const updatedHtml = await page.content();
       if (updatedHtml.length > html.length) {
         log(`${SITE_NAME.toUpperCase()} SPA_CONTENT_UPDATED: Content loaded after waiting`);
