@@ -79,7 +79,7 @@ async function handleLogin(page) {
   
   // Después de hacer clic en Continue, esperar a que se procese
   log(`${SITE_NAME.toUpperCase()} LOGIN: Waiting for email processing...`);
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(2000);
   
   // SEGUNDO PASO: Buscar y hacer clic en el botón de Google OAuth que aparece después del email
   log(`${SITE_NAME.toUpperCase()} LOGIN: Looking for Google OAuth button after email...`);
@@ -186,7 +186,7 @@ async function handleLogin(page) {
   }
   
   // Esperar a que se abra la página de selección de cuenta de Google
-  await page.waitForTimeout(5000);
+  await page.waitForTimeout(3000);
   
   // Verificar si estamos en la página de Google
   const currentUrl = page.url();
@@ -234,24 +234,29 @@ async function handleLogin(page) {
       log(`${SITE_NAME.toUpperCase()} LOGIN: Target account clicked`);
       
       // Esperar a que se complete la autenticación
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(2000);
       
-      // Esperar a que se redirija de vuelta a FullEnrich
-      await page.waitForNavigation({ timeout: 30000 });
-      log(`${SITE_NAME.toUpperCase()} LOGIN: Redirected back to FullEnrich`);
+      // Esperar a que se redirija de vuelta a FullEnrich con manejo de timeout
+      try {
+        await page.waitForNavigation({ timeout: 15000 });
+        log(`${SITE_NAME.toUpperCase()} LOGIN: Redirected back to FullEnrich`);
+      } catch (navigationError) {
+        log(`${SITE_NAME.toUpperCase()} LOGIN: Navigation timeout, but continuing...`);
+        // Continuar aunque haya timeout en la navegación
+      }
       
-      // Esperar adicional 3 segundos como solicitado
-      await page.waitForTimeout(3000);
+      // Esperar adicional 2 segundos como solicitado
+      await page.waitForTimeout(2000);
       
     } else {
       log(`${SITE_NAME.toUpperCase()} LOGIN: Target account not found, trying to continue with default selection`);
       // Si no encontramos la cuenta específica, intentar continuar con la selección por defecto
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(3000);
     }
   } else {
     log(`${SITE_NAME.toUpperCase()} LOGIN: Not on Google account page, current URL: ${currentUrl}`);
     // Si no estamos en la página de Google, esperar un poco más
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(3000);
   }
   
   // Verificar si el login fue exitoso
@@ -296,6 +301,35 @@ function filterHtmlForAI(html) {
         lowerLine.includes('pdf') ||
         lowerLine.includes('stripe.com') ||
         lowerLine.includes('pay.stripe') ||
+        // Términos específicos de FullEnrich
+        lowerLine.includes('invoices & manage subscription') ||
+        lowerLine.includes('invoices & manage') ||
+        lowerLine.includes('manage subscription') ||
+        lowerLine.includes('historique de facturation') ||
+        lowerLine.includes('billing history') ||
+        lowerLine.includes('next renewal') ||
+        lowerLine.includes('credit card') ||
+        lowerLine.includes('billing details') ||
+        lowerLine.includes('payment method') ||
+        lowerLine.includes('moyen de paiement') ||
+        lowerLine.includes('informations de facturation') ||
+        lowerLine.includes('afficher plus') ||
+        lowerLine.includes('show more') ||
+        // Fechas de facturación (formato francés)
+        lowerLine.match(/\d{1,2}\s+(jan|fév|mar|avr|mai|juin|juil|août|sept|oct|nov|déc)\.?\s+\d{4}/i) ||
+        lowerLine.match(/\d{1,2}\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+\d{4}/i) ||
+        // Fechas en inglés
+        lowerLine.match(/\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\.?\s+\d{4}/i) ||
+        lowerLine.match(/\d{1,2}\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}/i) ||
+        // Precios en euros
+        lowerLine.includes('€') ||
+        lowerLine.includes('eur') ||
+        lowerLine.includes('euro') ||
+        // Estados de pago
+        lowerLine.includes('payée') ||
+        lowerLine.includes('paid') ||
+        lowerLine.includes('payé') ||
+        // Elementos interactivos
         lowerLine.includes('<button') ||
         lowerLine.includes('</button>') ||
         lowerLine.includes('<a ') ||
@@ -317,9 +351,7 @@ function filterHtmlForAI(html) {
         lowerLine.match(/\d{1,2}[-\/]\d{1,2}[-\/]\d{4}/) ||
         // Mantener precios
         lowerLine.includes('$') ||
-        lowerLine.includes('€') ||
         lowerLine.includes('usd') ||
-        lowerLine.includes('eur') ||
         (lowerLine.includes('<div') && (lowerLine.includes('class=') || lowerLine.includes('id='))) ||
         lowerLine.trim() === '' // Mantener líneas vacías para estructura
       );
@@ -356,7 +388,7 @@ async function run(context) {
       log(`${SITE_NAME.toUpperCase()} PAGE LOADED`);
       
       // Esperar un poco más para que cargue completamente
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(3000);
       
     } catch (gotoError) {
       log(`${SITE_NAME.toUpperCase()} GOTO_ERROR: ${gotoError.message}`);
@@ -380,9 +412,24 @@ async function run(context) {
         });
         await page.waitForTimeout(3000);
         
+        // Verificar que ahora estamos en la página correcta
+        const newTitle = await page.title();
+        log(`${SITE_NAME.toUpperCase()} NEW_PAGE_TITLE: "${newTitle}"`);
+        
+        if (newTitle.toLowerCase().includes('login') || newTitle.toLowerCase().includes('sign in')) {
+          throw new Error('Still on login page after authentication attempt. Login may have failed.');
+        }
+        
+        // Obtener el HTML actualizado después del login
+        const updatedHtml = await page.content();
+        log(`${SITE_NAME.toUpperCase()} UPDATED_HTML: ${updatedHtml.length} chars after login`);
+        
+        // Continuar con el HTML actualizado
+        return await processBillingPage(page, updatedHtml, downloadPath);
+        
       } catch (loginError) {
         log(`${SITE_NAME.toUpperCase()} LOGIN_FAILED: ${loginError.message}`);
-        throw new Error('Failed to login to Fullenrich. Please check your credentials or login manually first.');
+        throw new Error(`Failed to login to Fullenrich: ${loginError.message}`);
       }
     }
       
@@ -435,16 +482,16 @@ async function run(context) {
         log(`${SITE_NAME.toUpperCase()} UPDATED_HTML: ${updatedHtml.length} chars after login`);
         
         // Continuar con el HTML actualizado
-        return await processBillingPage(page, updatedHtml, downloadPath);
+        downloadedFiles = await processBillingPage(page, updatedHtml, downloadPath);
         
       } catch (loginError) {
         log(`${SITE_NAME.toUpperCase()} LOGIN_FAILED: ${loginError.message}`);
         throw new Error(`Failed to login to Fullenrich: ${loginError.message}`);
       }
+    } else {
+      // Continuar con el procesamiento normal de la página de facturación
+      downloadedFiles = await processBillingPage(page, html, downloadPath);
     }
-
-    // Continuar con el procesamiento normal de la página de facturación
-    return await processBillingPage(page, html, downloadPath);
 
   } catch (error) {
     log(`ERROR in ${SITE_NAME}: ${error.message}`);
@@ -463,27 +510,117 @@ async function processBillingPage(page, html, downloadPath) {
   const filteredHtml = filterHtmlForAI(html);
   log(`${SITE_NAME.toUpperCase()} Filtered HTML size: ${filteredHtml.length} chars (reduced from ${html.length})`);
 
-  // Verificar si hay enlaces a Stripe (facturas)
-  if (filteredHtml.includes('stripe.com') || filteredHtml.includes('manage subscription')) {
-    log(`${SITE_NAME.toUpperCase()} BILLING_ELEMENTS_DETECTED: Found billing-related elements`);
+  // Verificar si hay enlaces específicos de FullEnrich
+  if (filteredHtml.includes('invoices & manage subscription') || filteredHtml.includes('historique de facturation')) {
+    log(`${SITE_NAME.toUpperCase()} FULLENRICH_BILLING_ELEMENTS_DETECTED: Found FullEnrich-specific billing elements`);
   } else {
-    log(`${SITE_NAME.toUpperCase()} NO_BILLING_ELEMENTS: No billing elements found in filtered HTML`);
-  }
-
-  // Verificar si hay acceso de administrador
-  if (filteredHtml.toLowerCase().includes('admin') || filteredHtml.toLowerCase().includes('manage')) {
-    log(`${SITE_NAME.toUpperCase()} ADMIN_ACCESS_DETECTED: User appears to have admin access`);
-  } else {
-    log(`${SITE_NAME.toUpperCase()} NO_ADMIN_ACCESS: User may not have admin privileges for billing`);
+    log(`${SITE_NAME.toUpperCase()} NO_FULLENRICH_BILLING_ELEMENTS: No FullEnrich-specific billing elements found`);
   }
 
   // Verificar si hay facturas disponibles antes de llamar a la IA
-  if (filteredHtml.includes('No invoices') || filteredHtml.includes('No billing history')) {
+  if (filteredHtml.includes('No invoices') || filteredHtml.includes('No billing history') || filteredHtml.includes('Aucune facture')) {
     log(`${SITE_NAME.toUpperCase()} NO_INVOICES_AVAILABLE: No invoices found`);
     throw new Error('No invoices available for download. No billing history found.');
   }
 
-  // Llamada a IA #1 (ahora sin la palabra clave específica)
+  // Buscar específicamente el enlace "Invoices & Manage subscription"
+  log(`${SITE_NAME.toUpperCase()} LOOKING_FOR_INVOICES_LINK: Searching for invoices management link...`);
+  
+  const invoiceLinkSelectors = [
+    'a:has-text("Invoices & Manage subscription")',
+    'a:has-text("Invoices & Manage")',
+    'a:has-text("Manage subscription")',
+    'a:has-text("Invoices")',
+    'a:has-text("Factures")',
+    'a:has-text("Historique de facturation")',
+    'a:has-text("Billing history")',
+    'a:has-text("Afficher plus")',
+    'a:has-text("Show more")',
+    'button:has-text("Invoices & Manage subscription")',
+    'button:has-text("Invoices & Manage")',
+    'button:has-text("Manage subscription")',
+    'div[role="button"]:has-text("Invoices & Manage subscription")',
+    'div[role="button"]:has-text("Invoices & Manage")',
+    'div[role="button"]:has-text("Manage subscription")'
+  ];
+  
+  let invoiceLink = null;
+  for (const selector of invoiceLinkSelectors) {
+    try {
+      invoiceLink = page.locator(selector).first();
+      await invoiceLink.waitFor({ timeout: 2000 });
+      log(`${SITE_NAME.toUpperCase()} INVOICE_LINK_FOUND: ${selector}`);
+      break;
+    } catch (e) {
+      log(`${SITE_NAME.toUpperCase()} INVOICE_LINK_SELECTOR_FAILED: ${selector} - ${e.message}`);
+      // Continuar con el siguiente selector
+    }
+  }
+  
+  if (invoiceLink) {
+    // Hacer clic en el enlace de facturas
+    log(`${SITE_NAME.toUpperCase()} CLICKING_INVOICE_LINK: Navigating to invoices page...`);
+    await invoiceLink.click();
+    
+    // Esperar a que se cargue la página de facturas
+    await page.waitForTimeout(3000);
+    
+    // Verificar si estamos en una página de Stripe
+    const currentUrl = page.url();
+    log(`${SITE_NAME.toUpperCase()} INVOICES_PAGE_URL: ${currentUrl}`);
+    
+    if (currentUrl.includes('stripe.com') || currentUrl.includes('pay.stripe.com')) {
+      log(`${SITE_NAME.toUpperCase()} STRIPE_PAGE_DETECTED: Now on Stripe invoices page`);
+      
+      // Buscar la factura más reciente (primera en la lista)
+      const latestInvoiceSelectors = [
+        'a[href*="invoice"]:first-child',
+        'tr:first-child a[href*="invoice"]',
+        'a:has-text("Download"):first-child',
+        'a:has-text("Télécharger"):first-child',
+        'button:has-text("Download"):first-child',
+        'button:has-text("Télécharger"):first-child',
+        'a[href*=".pdf"]:first-child',
+        'a[href*="download"]:first-child'
+      ];
+      
+      let latestInvoice = null;
+      for (const selector of latestInvoiceSelectors) {
+        try {
+          latestInvoice = page.locator(selector).first();
+          await latestInvoice.waitFor({ timeout: 2000 });
+          log(`${SITE_NAME.toUpperCase()} LATEST_INVOICE_FOUND: ${selector}`);
+          break;
+        } catch (e) {
+          log(`${SITE_NAME.toUpperCase()} LATEST_INVOICE_SELECTOR_FAILED: ${selector} - ${e.message}`);
+          // Continuar con el siguiente selector
+        }
+      }
+      
+      if (latestInvoice) {
+        // Hacer clic en la factura más reciente para descargarla
+        log(`${SITE_NAME.toUpperCase()} DOWNLOADING_LATEST_INVOICE: Clicking on latest invoice...`);
+        await latestInvoice.click();
+        
+        // Esperar a que se inicie la descarga
+        await page.waitForTimeout(2000);
+        
+        log(`${SITE_NAME.toUpperCase()} LATEST_INVOICE_DOWNLOAD_INITIATED`);
+        return ['latest_invoice_downloaded'];
+      } else {
+        log(`${SITE_NAME.toUpperCase()} NO_LATEST_INVOICE_FOUND: Could not find latest invoice download link`);
+      }
+    } else {
+      log(`${SITE_NAME.toUpperCase()} NOT_ON_STRIPE_PAGE: Current page is not Stripe invoices page`);
+    }
+  } else {
+    log(`${SITE_NAME.toUpperCase()} NO_INVOICE_LINK_FOUND: Could not find invoices management link`);
+  }
+
+  // Si no encontramos el enlace específico, usar la IA como fallback
+  log(`${SITE_NAME.toUpperCase()} FALLBACK_TO_AI: Using AI to find download candidates...`);
+  
+  // Llamada a IA como fallback
   const candidates = await findCandidateElements(filteredHtml);
   log(`${SITE_NAME.toUpperCase()} CANDIDATES_FROM_AI ${candidates.length}`);
   if (candidates.length === 0) {
