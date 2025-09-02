@@ -217,7 +217,7 @@ async function run(context) {
       log(`${SITE_NAME.toUpperCase()} PAGE LOADED`);
       
       // Esperar un poco más para que cargue completamente
-      await page.waitForTimeout(8000);
+      await page.waitForTimeout(10000);
       
     } catch (gotoError) {
       log(`${SITE_NAME.toUpperCase()} GOTO_ERROR: ${gotoError.message}`);
