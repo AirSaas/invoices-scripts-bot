@@ -81,109 +81,184 @@ async function handleLogin(page) {
   log(`${SITE_NAME.toUpperCase()} LOGIN: Waiting for email processing...`);
   await page.waitForTimeout(3000);
   
-  // NUEVO: Verificar si aparece un campo de contraseña después del email
-  log(`${SITE_NAME.toUpperCase()} LOGIN: Checking for password field after email...`);
+  // SEGUNDO PASO: Buscar y hacer clic en el botón de Google OAuth que aparece después del email
+  log(`${SITE_NAME.toUpperCase()} LOGIN: Looking for Google OAuth button after email...`);
   
-  try {
-    // Buscar campo de contraseña que pueda aparecer después del email
-    const passwordSelectors = [
-      'input[type="password"]',
-      'input[name="password"]',
-      'input[aria-label*="password"]',
-      'input[aria-label*="contraseña"]',
-      'input[placeholder*="password"]',
-      'input[placeholder*="contraseña"]',
-      'input[id*="password"]',
-      'input[data-testid*="password"]'
-    ];
-    
-    let passwordFieldFound = false;
-    for (const selector of passwordSelectors) {
-      try {
-        await page.waitForSelector(selector, { timeout: 3000 });
-        log(`${SITE_NAME.toUpperCase()} LOGIN: Password field found with selector: ${selector}`);
-        
-        // Obtener la contraseña de la variable de entorno
-        const password = process.env.FULLENRICH_PSW;
-        if (!password) {
-          log(`${SITE_NAME.toUpperCase()} LOGIN: WARNING: FULLENRICH_PSW environment variable not set`);
-          throw new Error('FULLENRICH_PSW environment variable is required for password field');
-        }
-        
-        // Limpiar el campo y escribir la contraseña
-        await page.fill(selector, '');
-        await page.type(selector, password, { delay: 100 });
-        log(`${SITE_NAME.toUpperCase()} LOGIN: Password entered successfully`);
-        
-        passwordFieldFound = true;
-        break;
-        
-      } catch (selectorError) {
-        log(`${SITE_NAME.toUpperCase()} LOGIN: Password selector ${selector} failed: ${selectorError.message}`);
-        continue;
-      }
+  // Buscar el iframe de Google OAuth
+  const iframeSelectors = [
+    'iframe[src*="accounts.google.com"]',
+    'iframe[title*="Google"]',
+    'iframe[title*="Acceder"]',
+    'iframe[title*="Sign in"]',
+    'iframe[title*="Botón"]',
+    'iframe.L5Fo6c-PQbLGe',
+    'iframe[id*="gsi"]'
+  ];
+  
+  let googleIframe = null;
+  for (const selector of iframeSelectors) {
+    try {
+      googleIframe = page.locator(selector).first();
+      await googleIframe.waitFor({ timeout: 2000 });
+      log(`${SITE_NAME.toUpperCase()} LOGIN: Google iframe found with selector: ${selector}`);
+      break;
+    } catch (e) {
+      log(`${SITE_NAME.toUpperCase()} LOGIN: Iframe selector ${selector} failed: ${e.message}`);
+      // Continuar con el siguiente selector
     }
-    
-    if (passwordFieldFound) {
-      // Buscar y hacer clic en el botón "Sign In" o "Login" después de la contraseña
-      log(`${SITE_NAME.toUpperCase()} LOGIN: Looking for sign in button after password...`);
-      
-      const signInAfterPasswordSelectors = [
-        'button:has-text("Sign In")',
-        'button:has-text("Sign in")',
-        'button:has-text("Login")',
-        'button:has-text("Log in")',
-        'button:has-text("Continue")',
-        'button:has-text("Submit")',
-        'button[type="submit"]',
-        'input[type="submit"]',
-        'div[role="button"]:has-text("Sign In")',
-        'div[role="button"]:has-text("Login")'
-      ];
-      
-      let signInButtonClicked = false;
-      for (const selector of signInAfterPasswordSelectors) {
-        try {
-          await page.waitForSelector(selector, { timeout: 3000 });
-          log(`${SITE_NAME.toUpperCase()} LOGIN: Sign in button after password found: ${selector}`);
-          await page.click(selector);
-          log(`${SITE_NAME.toUpperCase()} LOGIN: Sign in button after password clicked`);
-          signInButtonClicked = true;
-          break;
-        } catch (selectorError) {
-          log(`${SITE_NAME.toUpperCase()} LOGIN: Sign in button selector ${selector} failed: ${selectorError.message}`);
-          continue;
-        }
-      }
-      
-      if (!signInButtonClicked) {
-        log(`${SITE_NAME.toUpperCase()} LOGIN: WARNING: Could not find sign in button after password, continuing...`);
-      }
-      
-      // Esperar a que se procese la contraseña
-      await page.waitForTimeout(5000);
-      
-    } else {
-      log(`${SITE_NAME.toUpperCase()} LOGIN: No password field found, continuing with email-only flow...`);
-    }
-    
-  } catch (passwordError) {
-    log(`${SITE_NAME.toUpperCase()} LOGIN: Password handling error: ${passwordError.message}`);
-    // Continuar sin manejar la contraseña si hay algún error
   }
   
-  // Después de manejar email y posible contraseña, Google OAuth se maneja automáticamente
-  // Solo necesitamos esperar a que se complete el flujo de autenticación
-  log(`${SITE_NAME.toUpperCase()} LOGIN: Waiting for Google OAuth to complete...`);
+  if (!googleIframe) {
+    // Si no encontramos el iframe, buscar el botón directamente
+    log(`${SITE_NAME.toUpperCase()} LOGIN: Iframe not found, looking for direct button...`);
+    
+    // Buscar el botón de Google OAuth que contiene el usuario pre-seleccionado
+    const googleButtonSelectors = [
+      // Selectores específicos para el botón azul con usuario pre-seleccionado
+      'button:has-text("Acceder como")',
+      'button:has-text("Se connecter en tant que")',
+      'button:has-text("Access as")',
+      'button:has-text("Login as")',
+      'button:has-text("Sign in as")',
+      'div[role="button"]:has-text("Acceder como")',
+      'div[role="button"]:has-text("Se connecter en tant que")',
+      'div[role="button"]:has-text("Access as")',
+      'div[role="button"]:has-text("Login as")',
+      'div[role="button"]:has-text("Sign in as")',
+      'a:has-text("Acceder como")',
+      'a:has-text("Se connecter en tant que")',
+      'a:has-text("Access as")',
+      'a:has-text("Login as")',
+      'a:has-text("Sign in as")',
+      // Selectores más específicos para el botón azul
+      'button[style*="background"]:has-text("Acceder")',
+      'button[style*="background"]:has-text("Se connecter")',
+      'button[style*="background"]:has-text("Access")',
+      'button[style*="background"]:has-text("Login")',
+      'button[style*="background"]:has-text("Sign in")',
+      'div[role="button"][style*="background"]:has-text("Acceder")',
+      'div[role="button"][style*="background"]:has-text("Se connecter")',
+      'div[role="button"][style*="background"]:has-text("Access")',
+      'div[role="button"][style*="background"]:has-text("Login")',
+      'div[role="button"][style*="background"]:has-text("Sign in")',
+      // Selectores por clase o atributos específicos
+      'button[class*="google"]',
+      'button[class*="oauth"]',
+      'button[class*="login"]',
+      'div[role="button"][class*="google"]',
+      'div[role="button"][class*="oauth"]',
+      'div[role="button"][class*="login"]',
+      // Selectores de respaldo más genéricos
+      'button:has(img[alt*="Google"])',
+      'button[aria-label*="Google"]',
+      'button:has-text("Google")',
+      'div[role="button"]:has-text("Google")',
+      'a:has-text("Google")'
+    ];
+    
+    let googleButton = null;
+    for (const selector of googleButtonSelectors) {
+      try {
+        // Usar page.locator en lugar de page.$ para mejor compatibilidad
+        const button = page.locator(selector).first();
+        await button.waitFor({ timeout: 2000 });
+        googleButton = button;
+        log(`${SITE_NAME.toUpperCase()} LOGIN: Google OAuth button found with selector: ${selector}`);
+        break;
+      } catch (e) {
+        log(`${SITE_NAME.toUpperCase()} LOGIN: Selector ${selector} failed: ${e.message}`);
+        // Continuar con el siguiente selector
+      }
+    }
+    
+    if (!googleButton) {
+      throw new Error('Google OAuth button not found after email submission');
+    }
+    
+    // Hacer clic en el botón de Google OAuth
+    await googleButton.click();
+    log(`${SITE_NAME.toUpperCase()} LOGIN: Google OAuth button clicked`);
+  } else {
+    // Si encontramos el iframe, hacer clic en él
+    log(`${SITE_NAME.toUpperCase()} LOGIN: Clicking on Google iframe...`);
+    await googleIframe.click();
+    log(`${SITE_NAME.toUpperCase()} LOGIN: Google iframe clicked`);
+  }
   
-  // Esperar a que se complete la redirección y autenticación
-  await page.waitForTimeout(8000);
+  // Esperar a que se abra la página de selección de cuenta de Google
+  await page.waitForTimeout(5000);
+  
+  // Verificar si estamos en la página de Google
+  const currentUrl = page.url();
+  log(`${SITE_NAME.toUpperCase()} LOGIN: Current URL after Google button click: ${currentUrl}`);
+  
+  if (currentUrl.includes('accounts.google.com')) {
+    log(`${SITE_NAME.toUpperCase()} LOGIN: On Google account selection page`);
+    
+    // Obtener el email objetivo de la variable de entorno
+    const targetEmail = process.env.FULLENRICH_EMAIL;
+    if (!targetEmail) {
+      throw new Error('FULLENRICH_EMAIL environment variable is not set');
+    }
+    
+    log(`${SITE_NAME.toUpperCase()} LOGIN: Looking for account: ${targetEmail}`);
+    
+    // Buscar la cuenta específica en la lista de cuentas de Google
+    const accountSelectors = [
+      `[data-email="${targetEmail}"]`,
+      `[data-identifier="${targetEmail}"]`,
+      `div:has-text("${targetEmail}")`,
+      `[aria-label*="${targetEmail}"]`,
+      `div[role="button"]:has-text("${targetEmail}")`,
+      `div:has-text("${targetEmail.split('@')[0]}")`, // Buscar por nombre de usuario
+      `div:has-text("${targetEmail.split('@')[1]}")`   // Buscar por dominio
+    ];
+    
+    let targetAccount = null;
+    for (const selector of accountSelectors) {
+      try {
+        const account = page.locator(selector).first();
+        await account.waitFor({ timeout: 2000 });
+        targetAccount = account;
+        log(`${SITE_NAME.toUpperCase()} LOGIN: Target account found with selector: ${selector}`);
+        break;
+      } catch (e) {
+        log(`${SITE_NAME.toUpperCase()} LOGIN: Account selector ${selector} failed: ${e.message}`);
+        // Continuar con el siguiente selector
+      }
+    }
+    
+    if (targetAccount) {
+      // Hacer clic en la cuenta específica
+      await targetAccount.click();
+      log(`${SITE_NAME.toUpperCase()} LOGIN: Target account clicked`);
+      
+      // Esperar a que se complete la autenticación
+      await page.waitForTimeout(3000);
+      
+      // Esperar a que se redirija de vuelta a FullEnrich
+      await page.waitForNavigation({ timeout: 30000 });
+      log(`${SITE_NAME.toUpperCase()} LOGIN: Redirected back to FullEnrich`);
+      
+      // Esperar adicional 3 segundos como solicitado
+      await page.waitForTimeout(3000);
+      
+    } else {
+      log(`${SITE_NAME.toUpperCase()} LOGIN: Target account not found, trying to continue with default selection`);
+      // Si no encontramos la cuenta específica, intentar continuar con la selección por defecto
+      await page.waitForTimeout(5000);
+    }
+  } else {
+    log(`${SITE_NAME.toUpperCase()} LOGIN: Not on Google account page, current URL: ${currentUrl}`);
+    // Si no estamos en la página de Google, esperar un poco más
+    await page.waitForTimeout(5000);
+  }
   
   // Verificar si el login fue exitoso
-  const currentUrl = page.url();
-  log(`${SITE_NAME.toUpperCase()} LOGIN: Current URL after OAuth: ${currentUrl}`);
+  const finalUrl = page.url();
+  log(`${SITE_NAME.toUpperCase()} LOGIN: Final URL after OAuth: ${finalUrl}`);
   
-  if (currentUrl.includes('fullenrich.com') && !currentUrl.includes('login') && !currentUrl.includes('auth')) {
+  if (finalUrl.includes('fullenrich.com') && !finalUrl.includes('login') && !finalUrl.includes('auth')) {
     log(`${SITE_NAME.toUpperCase()} LOGIN: Successfully authenticated via Google OAuth`);
   } else {
     log(`${SITE_NAME.toUpperCase()} LOGIN: Still in authentication flow, may need manual intervention`);
