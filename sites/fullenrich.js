@@ -14,9 +14,12 @@ async function handleLogin(page) {
   await page.waitForSelector('input[type="email"], input[placeholder*="email"], input[name*="email"]', { timeout: 10000 });
   log(`${SITE_NAME.toUpperCase()} LOGIN: Email field found`);
   
-  // Buscar el campo de email
+  // Buscar el campo de email con selectores específicos del HTML proporcionado
   const emailSelectors = [
     'input[type="email"]',
+    'input[placeholder="email"]',
+    'input[name="email"]',
+    'input[autocomplete="email"]',
     'input[placeholder*="email"]',
     'input[name*="email"]',
     'input[aria-label*="Email"]'
@@ -48,12 +51,13 @@ async function handleLogin(page) {
   await emailField.fill(emailToUse);
   log(`${SITE_NAME.toUpperCase()} LOGIN: Email filled: ${emailToUse}`);
   
-  // Buscar y hacer clic en el botón "Continue"
+  // Buscar y hacer clic en el botón "Continue" con selectores específicos del HTML
   const continueSelectors = [
+    'button.btn-primary:has-text("Continue")',
     'button:has-text("Continue")',
+    'button[type="button"]:has-text("Continue")',
     'button[type="submit"]',
     'input[type="submit"]',
-    'button:has-text("Continue")',
     'div[role="button"]:has-text("Continue")'
   ];
   
@@ -73,6 +77,23 @@ async function handleLogin(page) {
     throw new Error('Continue button not found on login page');
   }
   
+  // Verificar si el botón está habilitado antes de hacer clic
+  const isDisabled = await continueButton.getAttribute('disabled');
+  if (isDisabled !== null) {
+    log(`${SITE_NAME.toUpperCase()} LOGIN: Continue button is disabled, waiting for it to be enabled...`);
+    // Esperar a que el botón se habilite después de llenar el email
+    try {
+      await page.waitForFunction(() => {
+        const button = document.querySelector('button.btn-primary:has-text("Continue"), button:has-text("Continue")');
+        return button && !button.disabled;
+      }, { timeout: 5000 });
+      log(`${SITE_NAME.toUpperCase()} LOGIN: Continue button is now enabled`);
+    } catch (timeoutError) {
+      log(`${SITE_NAME.toUpperCase()} LOGIN: Continue button did not enable automatically, trying to click anyway...`);
+      // Intentar hacer clic aunque esté deshabilitado, a veces funciona
+    }
+  }
+  
   // Hacer clic en Continue
   await continueButton.click();
   log(`${SITE_NAME.toUpperCase()} LOGIN: Continue button clicked`);
@@ -84,8 +105,9 @@ async function handleLogin(page) {
   // SEGUNDO PASO: Buscar y hacer clic en el botón de Google OAuth que aparece después del email
   log(`${SITE_NAME.toUpperCase()} LOGIN: Looking for Google OAuth button after email...`);
   
-  // Buscar el iframe de Google OAuth
+  // Buscar el iframe de Google OAuth con selectores específicos del HTML proporcionado
   const iframeSelectors = [
+    'iframe[title="Botón de Acceder con Google"]',
     'iframe[src*="accounts.google.com"]',
     'iframe[title*="Google"]',
     'iframe[title*="Acceder"]',
@@ -114,6 +136,11 @@ async function handleLogin(page) {
     
     // Buscar el botón de Google OAuth que contiene el usuario pre-seleccionado
     const googleButtonSelectors = [
+      // Selectores específicos del HTML proporcionado
+      'div[role="button"]:has-text("Acceder")',
+      'div[role="button"].nsm7Bb-HzV7m-LgbsSe',
+      'div[role="button"]:has-text("Acceder con Google")',
+      'div[role="button"]:has-text("Sign in with Google")',
       // Selectores específicos para el botón azul con usuario pre-seleccionado
       'button:has-text("Acceder como")',
       'button:has-text("Se connecter en tant que")',
@@ -179,10 +206,24 @@ async function handleLogin(page) {
     await googleButton.click();
     log(`${SITE_NAME.toUpperCase()} LOGIN: Google OAuth button clicked`);
   } else {
-    // Si encontramos el iframe, hacer clic en él
+    // Si encontramos el iframe, intentar hacer clic en él
     log(`${SITE_NAME.toUpperCase()} LOGIN: Clicking on Google iframe...`);
-    await googleIframe.click();
-    log(`${SITE_NAME.toUpperCase()} LOGIN: Google iframe clicked`);
+    try {
+      await googleIframe.click();
+      log(`${SITE_NAME.toUpperCase()} LOGIN: Google iframe clicked successfully`);
+    } catch (iframeClickError) {
+      log(`${SITE_NAME.toUpperCase()} LOGIN: Iframe click failed, trying alternative approach: ${iframeClickError.message}`);
+      
+      // Intentar hacer clic en el contenedor del iframe
+      try {
+        const iframeContainer = page.locator('#googleLoginButtonForWeb, div:has(iframe[title="Botón de Acceder con Google"])').first();
+        await iframeContainer.click();
+        log(`${SITE_NAME.toUpperCase()} LOGIN: Iframe container clicked successfully`);
+      } catch (containerClickError) {
+        log(`${SITE_NAME.toUpperCase()} LOGIN: Container click also failed: ${containerClickError.message}`);
+        throw new Error('Failed to interact with Google OAuth iframe');
+      }
+    }
   }
   
   // Esperar a que se abra la página de selección de cuenta de Google
@@ -397,8 +438,15 @@ async function run(context) {
     const currentUrl = page.url();
     log(`${SITE_NAME.toUpperCase()} CURRENT_URL: ${currentUrl}`);
     
-    if (currentUrl.includes('login') || currentUrl.includes('auth') || currentUrl.includes('signin')) {
-      log(`${SITE_NAME.toUpperCase()} LOGIN_PAGE_DETECTED: Handling login page...`);
+    // Verificar si estamos en una página de login basándonos en URL y elementos de la página
+    const isLoginUrl = currentUrl.includes('login') || currentUrl.includes('auth') || currentUrl.includes('signin');
+    
+    // También verificar si hay elementos específicos del formulario de login
+    const hasLoginForm = await page.locator('input[type="email"], input[placeholder="email"], input[name="email"]').count() > 0;
+    const hasContinueButton = await page.locator('button:has-text("Continue"), button.btn-primary:has-text("Continue")').count() > 0;
+    
+    if (isLoginUrl || (hasLoginForm && hasContinueButton)) {
+      log(`${SITE_NAME.toUpperCase()} LOGIN_PAGE_DETECTED: Handling login page... (URL: ${currentUrl}, Has form: ${hasLoginForm}, Has continue: ${hasContinueButton})`);
       
       // Intentar manejar el login automáticamente
       try {
@@ -454,8 +502,17 @@ async function run(context) {
     log(`${SITE_NAME.toUpperCase()} PAGE_TITLE: "${title}"`);
     
     // Verificar si estamos en una página de login y necesitamos autenticarnos
-    if (title.toLowerCase().includes('login') || title.toLowerCase().includes('sign in')) {
-      log(`${SITE_NAME.toUpperCase()} LOGIN_PAGE_DETECTED: Handling login page...`);
+    const isLoginPage = title.toLowerCase().includes('login') || 
+                       title.toLowerCase().includes('sign in') ||
+                       title.toLowerCase().includes('login to fullenrich');
+    
+    // También verificar si hay elementos específicos del formulario de login
+    const hasLoginForm = await page.locator('input[type="email"], input[placeholder="email"], input[name="email"]').count() > 0;
+    const hasContinueButton = await page.locator('button:has-text("Continue"), button.btn-primary:has-text("Continue")').count() > 0;
+    const hasGoogleOAuth = await page.locator('iframe[title="Botón de Acceder con Google"], div[role="button"]:has-text("Acceder")').count() > 0;
+    
+    if (isLoginPage || (hasLoginForm && hasContinueButton)) {
+      log(`${SITE_NAME.toUpperCase()} LOGIN_PAGE_DETECTED: Handling login page... (Title: "${title}", Has form: ${hasLoginForm}, Has continue: ${hasContinueButton}, Has OAuth: ${hasGoogleOAuth})`);
       
       // Intentar manejar el login automáticamente
       try {
@@ -473,7 +530,7 @@ async function run(context) {
         const newTitle = await page.title();
         log(`${SITE_NAME.toUpperCase()} NEW_PAGE_TITLE: "${newTitle}"`);
         
-        if (newTitle.toLowerCase().includes('login') || newTitle.toLowerCase().includes('sign in')) {
+        if (newTitle.toLowerCase().includes('login') || newTitle.toLowerCase().includes('sign in') || newTitle.toLowerCase().includes('login to fullenrich')) {
           throw new Error('Still on login page after authentication attempt. Login may have failed.');
         }
         
