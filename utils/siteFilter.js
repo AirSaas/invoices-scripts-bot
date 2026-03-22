@@ -61,8 +61,8 @@ RÈGLES :
     { role: 'user', content: userInput },
   ];
 
-  // Multi-turn loop: max 3 exchanges
-  for (let turn = 0; turn < 3; turn++) {
+  // Multi-turn loop: max 6 exchanges
+  for (let turn = 0; turn < 6; turn++) {
     let response;
     try {
       response = await openai.chat.completions.create({
