@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { log } = require('./utils/logger');
-const { createBrowser } = require('./utils/browserConfig');
+const { createBrowser, closeBrowser } = require('./utils/browserConfig');
 const { runAllScrapers } = require('./utils/scraperRunner');
 const { sendEmail } = require('./utils/emailSender');
 const ProfileManager = require('./utils/profileManager');
@@ -72,7 +72,7 @@ async function main() {
     }
   } finally {
     if (browser) {
-      await browser.close();
+      await closeBrowser(browser);
       log("===== BROWSER CLOSED =====");
     }
     log("===== INVOICES BOT FINISHED =====");

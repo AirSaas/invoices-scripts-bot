@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const { log } = require('./logger');
+const { isCdpAvailable } = require('./browserConfig');
 
 class ProfileManager {
   constructor() {
@@ -11,7 +12,18 @@ class ProfileManager {
   // Detect existing user profiles
   async detectExistingProfiles() {
     const profiles = [];
-    
+
+    // Check if CDP is available and add it as the first option
+    const cdpPort = process.env.CDP_PORT || 9222;
+    if (await isCdpAvailable(cdpPort)) {
+      profiles.push({
+        name: 'CDP',
+        path: null,
+        type: 'cdp',
+        description: `Connect to running Chrome (CDP port ${cdpPort})`
+      });
+    }
+
     try {
       // Only detect real Chrome user profiles
       if (fs.existsSync(this.chromeProfilesDir)) {
@@ -27,10 +39,10 @@ class ProfileManager {
         profiles.push(...chromeProfiles);
       }
 
-      // If no Chrome profiles, show error message
+      // If no profiles at all, show error message
       if (profiles.length === 0) {
-        log('❌ No valid Chrome profiles found');
-        log('💡 Make sure you have at least one Chrome profile configured');
+        log('❌ No valid Chrome profiles found and no CDP endpoint available');
+        log('💡 Either launch Chrome with --remote-debugging-port=9222 or configure a Chrome profile');
         process.exit(1);
       }
 
@@ -58,7 +70,7 @@ class ProfileManager {
       'AutofillStates', 'CertificateRevocation', 'CookieReadinessList',
       'Crowd Deny', 'DeferredBrowserMetrics'
     ];
-    
+
     // Only include profiles that are NOT system folders
     return !systemFolders.includes(profileName);
   }
@@ -66,13 +78,17 @@ class ProfileManager {
   // Show interactive menu
   async showProfileMenu() {
     const profiles = await this.detectExistingProfiles();
-    
+
     log('\n🎯 CHROME PROFILE SELECTION');
     log('=====================================\n');
 
     // Show available profiles
     profiles.forEach((profile, index) => {
-      log(`${index + 1}. 🌐 ${profile.description}`);
+      if (profile.type === 'cdp') {
+        log(`${index + 1}. 🔌 ${profile.description}`);
+      } else {
+        log(`${index + 1}. 🌐 ${profile.description}`);
+      }
     });
 
     log('\n0. 🚪 Exit');
@@ -88,17 +104,19 @@ class ProfileManager {
       const askProfile = () => {
         rl.question('👉 Select the number of the profile you want to use: ', (answer) => {
           const choice = parseInt(answer);
-          
+
           if (choice === 0) {
             log('👋 Goodbye!');
             rl.close();
             process.exit(0);
           }
-          
+
           if (choice >= 1 && choice <= profiles.length) {
             const selectedProfile = profiles[choice - 1];
             log(`\n✅ Profile selected: ${selectedProfile.description}`);
-            log(`📍 Path: ${selectedProfile.path}`);
+            if (selectedProfile.path) {
+              log(`📍 Path: ${selectedProfile.path}`);
+            }
             rl.close();
             resolve(selectedProfile);
           } else {
@@ -114,8 +132,13 @@ class ProfileManager {
 
   // Validate that the selected profile is valid
   validateProfile(profile) {
-    if (!profile || !profile.path) {
+    if (!profile || !profile.type) {
       throw new Error('Invalid profile');
+    }
+
+    // CDP profiles don't need path validation
+    if (profile.type === 'cdp') {
+      return true;
     }
 
     // If it's a Chrome user profile, verify it exists
