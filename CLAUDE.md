@@ -18,41 +18,33 @@ Bot qui télécharge automatiquement les factures depuis 6 plateformes SaaS (Dro
 
 ## Procédure "Lance le bot"
 
-Quand l'utilisateur demande de lancer le bot, d'exécuter les scrapers, ou de tester le téléchargement :
+Quand l'utilisateur demande de lancer le bot, d'exécuter les scrapers, ou de tester le téléchargement, suivre cette boucle **automatiquement** sans attendre de validation entre chaque étape :
 
-### Étape 1 — Lancer
-```bash
-npm start
-```
-(ou la commande spécifique demandée par l'utilisateur)
+### Boucle (max 3 tentatives)
 
-### Étape 2 — Lire le JSON d'exécution
-Après le run, lire le fichier JSON le plus récent dans `logs/execution-*.json`.
+1. **Lancer** `npm start`
+2. **Lire** le dernier fichier `logs/execution-*.json`
+3. **Analyser** chaque site :
+   - `status` : success / partial / failed
+   - `downloads` : fichiers téléchargés et échoués
+   - `errors` : phase de l'erreur (navigation, login, ai_candidates, ai_selectors, ai_pagination, download, pagination_click)
+   - `aiCalls` : candidats trouvés ? sélecteurs générés ? pagination détectée ?
+4. **Si des sites ont échoué** → corriger le code directement, puis **relancer** (retour à l'étape 1)
+5. **Si tout est OK** → sortir de la boucle
 
-### Étape 3 — Analyser
-Pour chaque site dans le JSON, vérifier :
-- **status** : `success`, `partial`, ou `failed`
-- **downloads** : combien de fichiers téléchargés, lesquels ont échoué
-- **errors** : phase de l'erreur (navigation, login, ai_candidates, ai_selectors, ai_pagination, download, pagination_click)
-- **aiCalls** : est-ce que l'IA a trouvé des candidats ? Des sélecteurs ? De la pagination ?
-- **pagination** : est-ce que la pagination a été détectée et suivie correctement ?
-
-### Étape 4 — Corriger si nécessaire
-Si des problèmes sont identifiés :
+Types de corrections possibles :
 - Sélecteurs qui ne matchent pas → ajuster le prompt IA ou les fallback selectors
 - Login échoué → vérifier les sélecteurs de login du site
 - Pagination non détectée → ajuster le prompt de findPaginationElement
 - Timeout → augmenter les délais
 - Erreur réseau → ajouter retry
 
-### Étape 5 — Itérer
-Relancer le bot et refaire les étapes 2-4. **Maximum 6 itérations.**
+### Résumé final
 
-### Étape 6 — Résumé
-Après la dernière itération (ou quand tout fonctionne), envoyer un message résumé :
+Après la dernière tentative (succès ou max atteint), envoyer un message résumé à l'utilisateur :
 - Nombre de sites OK / KO
 - Nombre total de fichiers téléchargés
-- Problèmes restants non résolus
+- Problèmes restants non résolus (si max 3 tentatives atteint)
 - Changements de code effectués pendant les itérations
 
 ## Ajouter un nouveau site
