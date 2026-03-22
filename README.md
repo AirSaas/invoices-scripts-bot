@@ -198,14 +198,32 @@ main.js
 
 ## Ajouter un nouveau site
 
-4 fichiers à modifier :
+### Étape 1 : Infos nécessaires
+
+Avant de coder, il faut connaître :
+
+1. **Nom du site** + **URL de la page factures/billing**
+2. **Pour quel(s) utilisateur(s)** — les users dispos sont dans `users.config.js`
+3. **Nombre de factures spécifique ?** — par défaut : 3 (batch) / 12 (all). Si le site a un nombre différent, on l'ajoute dans `SITE_CONFIG` de `utils/scraperRunner.js`
+
+### Étape 2 : Modifier 4 fichiers
 
 1. **Créer** `sites/{nom}.js` — copier le pattern d'un site existant, adapter login + URL
-2. **`utils/scraperRunner.js`** — ajouter une entrée dans `SCRAPER_REGISTRY`
+2. **`utils/scraperRunner.js`** — ajouter une entrée dans `SCRAPER_REGISTRY` (+ `SITE_CONFIG` si nb de factures custom)
 3. **`auth.js`** — ajouter l'URL dans `allAuthUrls` (avec le champ `site`)
-4. **`users.config.js`** — ajouter le site dans les `sites` de l'utilisateur concerné
+4. **`users.config.js`** — ajouter le site dans les `sites` du/des utilisateur(s) concerné(s)
 
 Le filtre de sites (`siteFilter.js`) s'adapte automatiquement : il reçoit la liste de sites du user en paramètre.
+
+### Étape 3 : Auth + test
+
+```bash
+# Ouvrir Chrome pour se connecter au nouveau site
+node auth.js "bertran"
+
+# Tester le téléchargement
+node main.js "bertran batch nouveausite"
+```
 
 **Authentification** : le scraper doit vérifier si l'utilisateur est déjà connecté (via CDP) avant de tenter un login. Les mots de passe (`*_PSW`) sont optionnels — le bot doit fonctionner sans, tant que l'utilisateur se connecte manuellement avant.
 
