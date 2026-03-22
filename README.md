@@ -41,20 +41,24 @@ Permet de sélectionner/créer un profil Chrome ou de se connecter via CDP (Chro
 npm start
 
 # User + mode + sites — en langage naturel
-node main.js "bertran batch dropcontact et hyperline"
-node main.js "bertran all"
-node main.js "simon batch drop"
+node main.js "bertran quarter dropcontact et hyperline"
+node main.js "bertran year"
+node main.js "simon quarter drop"
 node main.js "bertran juste dedupe"
+
+# Cron : uniquement les sites avec un nb précis configuré
+node main.js "bertran target"
 ```
 
-**Deux modes de téléchargement :**
+**Trois modes de téléchargement :**
 
 | Mode | Défaut | Description |
 |---|---|---|
-| `batch` | 3 factures | Téléchargement rapide (vérification) |
-| `all` | 12 factures | Téléchargement complet |
+| `quarter` | 3 factures | Dernier trimestre (mode par défaut) |
+| `year` | 12 factures | Factures de l'année |
+| `target` | — | Uniquement les sites avec un `target: N` configuré. Les autres sont skippés. |
 
-Le mode par défaut est `batch`. Chaque site peut avoir un override dans `SITE_CONFIG` (`utils/scraperRunner.js`).
+Le mode par défaut est `quarter`.
 
 Le bot comprend le français naturel grâce à un appel OpenAI (gpt-4o-mini). Si la demande est ambiguë, il pose des questions de clarification dans le terminal :
 
@@ -62,7 +66,7 @@ Le bot comprend le français naturel grâce à un appel OpenAI (gpt-4o-mini). Si
 $ node main.js "bertran le truc de contacts"
 🤖 Par "le truc de contacts", tu veux dire dropcontact, bettercontact, ou fullenrich ?
 👉 better
-SITE_FILTER: AI selected → bettercontact (mode: batch)
+SITE_FILTER: AI selected → bettercontact (mode: quarter)
 ```
 
 ### 5. Résultat
@@ -191,30 +195,23 @@ main.js
 
 | Option | Défaut | Description |
 |---|---|---|
-| `maxInvoices` | 3 (batch) / 12 (all) / configuré (cible) | Nombre max de factures par site, selon le mode |
+| `maxInvoices` | 3 (quarter) / 12 (year) / configuré (target) | Nombre max de factures par site, selon le mode |
 | `filterHtml` | `defaultFilterHtml` | Fonction custom pour filtrer le HTML avant les appels IA |
 
-### Modes de téléchargement
+### Mode target (cron)
 
-| Mode | Défaut | Description |
-|---|---|---|
-| `batch` | 3 | Petit lot de factures récentes. Mode par défaut. |
-| `all` | 12 | Toutes les factures disponibles. |
-| `cible` | — | Uniquement les sites avec un `cible: N` configuré dans `SITE_CONFIG`. Les autres sont skippés. |
-
-Le mode **cible** est conçu pour les **cron jobs** : il ne lance que les sites qui ont un nombre précis de factures à récupérer, configuré dans `SITE_CONFIG` de `utils/scraperRunner.js`.
+Le mode **target** est conçu pour les **cron jobs** : il ne lance que les sites qui ont un `target: N` configuré dans `SITE_CONFIG` de `utils/scraperRunner.js`. Les autres sont skippés.
 
 ```bash
-# Cron : ne fetch que les sites avec un nb cible configuré
-node main.js "bertran cible"
+node main.js "bertran target"
 ```
 
-Pour configurer un site en mode cible, ajouter `cible: N` dans `SITE_CONFIG` :
+Pour configurer un site en mode target :
 
 ```js
 const SITE_CONFIG = {
-  dropcontact: { cible: 5 },    // → lancé en mode cible avec max 5 factures
-  fullenrich: {},                // → skippé en mode cible
+  dropcontact: { target: 5 },   // → lancé en mode target avec max 5 factures
+  fullenrich: {},                // → skippé en mode target
 };
 ```
 
@@ -228,7 +225,7 @@ Avant de coder, il faut connaître :
 
 1. **Nom du site** + **URL de la page factures/billing**
 2. **Pour quel(s) utilisateur(s)** — les users dispos sont dans `users.config.js`
-3. **Nombre de factures spécifique ?** — par défaut : 3 (batch) / 12 (all). Si le site a un nombre précis, on l'ajoute dans `SITE_CONFIG` de `utils/scraperRunner.js` (champ `cible: N` pour le mode cron)
+3. **Nombre de factures spécifique ?** — par défaut : 3 (quarter) / 12 (year). Si le site a un nombre précis, on l'ajoute dans `SITE_CONFIG` de `utils/scraperRunner.js` (champ `target: N` pour le mode cron)
 
 ### Étape 2 : Modifier 4 fichiers
 
@@ -246,7 +243,7 @@ Le filtre de sites (`siteFilter.js`) s'adapte automatiquement : il reçoit la li
 node auth.js "bertran"
 
 # Tester le téléchargement
-node main.js "bertran batch nouveausite"
+node main.js "bertran quarter nouveausite"
 ```
 
 **Authentification** : le scraper doit vérifier si l'utilisateur est déjà connecté (via CDP) avant de tenter un login. Les mots de passe (`*_PSW`) sont optionnels — le bot doit fonctionner sans, tant que l'utilisateur se connecte manuellement avant.
