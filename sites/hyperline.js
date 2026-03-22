@@ -211,14 +211,14 @@ function filterHtmlForAI(html) {
   return filtered;
 }
 
-async function run(context, executionLog) {
+async function run(context, executionLog, folderManager) {
   const page = await context.newPage();
-  
+
   // Suprimir logs de console de la página para evitar spam en logs
   page.on('console', () => {}); // Ignorar todos los console.log de la página
   page.on('pageerror', () => {}); // Ignorar errores de la página
-  
-  const downloadPath = path.resolve(__dirname, '..', 'factures', SITE_NAME);
+
+  const downloadPath = folderManager ? folderManager.getSiteDownloadPath(SITE_NAME) : path.resolve(__dirname, '..', 'factures', SITE_NAME);
   let downloadedFiles = [];
 
   try {

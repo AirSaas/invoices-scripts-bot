@@ -10,7 +10,7 @@ const hyperlineBot = require('../sites/hyperline');
 const bettercontactBot = require('../sites/bettercontact');
 const dedupeBot = require('../sites/dedupe');
 
-async function runAllScrapers(browser, executionLog, siteFilter = []) {
+async function runAllScrapers(browser, executionLog, siteFilter = [], folderManager = null) {
   let allDownloadedFiles = [];
 
   // List of scrapers to run
@@ -43,7 +43,7 @@ async function runAllScrapers(browser, executionLog, siteFilter = []) {
 
     try {
       log(`===== EXECUTING ${scraper.name.toUpperCase()} SCRAPER =====`);
-      const files = await scraper.bot.run(browser, executionLog);
+      const files = await scraper.bot.run(browser, executionLog, folderManager);
 
       if (files && files.length > 0) {
         allDownloadedFiles.push(...files);

@@ -17,10 +17,12 @@ async function main() {
   // Initialize execution logger (JSON structured logs)
   const executionLog = new ExecutionLogger();
 
-  // Initialize folder structure first
+  // Initialize folder structure with unique run folder
+  let folderManager;
   try {
-    const folderManager = new FolderManager();
+    folderManager = new FolderManager();
     log("Initializing required folders...");
+    log(`Run folder: ${folderManager.getRunFolder()}`);
     await folderManager.initializeFolders();
 
     // Verify all folders exist
@@ -59,7 +61,7 @@ async function main() {
     browser = await createBrowser(selectedProfile);
 
     // Execute all scrapers with execution logging
-    const allDownloadedFiles = await runAllScrapers(browser, executionLog, siteFilter);
+    const allDownloadedFiles = await runAllScrapers(browser, executionLog, siteFilter, folderManager);
 
     log(`===== DOWNLOAD COMPLETE: ${allDownloadedFiles.length} file(s) =====`);
 
