@@ -171,11 +171,12 @@ async function downloadOneFile(page, element, selector, downloadPath, index) {
 }
 
 /**
- * Attempt to download ALL matching files from the current page, one by one.
+ * Attempt to download matching files from the current page, one by one.
  * Each file is saved to disk immediately after download.
+ * @param {number} maxFiles - Max files to download on this page (0 = unlimited)
  * Returns array of { filePath, filename, selector, fileSize }
  */
-async function attemptDownloads(page, selectors, downloadPath, executionLog, siteName) {
+async function attemptDownloads(page, selectors, downloadPath, executionLog, siteName, maxFiles = 0) {
   if (!fs.existsSync(downloadPath)) {
     fs.mkdirSync(downloadPath, { recursive: true });
   }
@@ -329,6 +330,12 @@ async function attemptDownloads(page, selectors, downloadPath, executionLog, sit
 
         // Small delay between downloads
         await page.waitForTimeout(1000);
+
+        // Check maxFiles limit
+        if (maxFiles > 0 && downloadedFiles.length >= maxFiles) {
+          log(`DOWNLOAD_MAX_REACHED: ${downloadedFiles.length}/${maxFiles} files — stopping`);
+          break;
+        }
       } else {
         log(`DOWNLOAD_FAILED: [element ${i + 1}] ${result.error}`);
         if (executionLog && siteName) {

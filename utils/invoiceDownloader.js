@@ -62,15 +62,17 @@ function defaultFilterHtml(html) {
  * @param {ExecutionLogger} executionLog - JSON execution logger
  * @param {object} options
  * @param {function} options.filterHtml - Custom HTML filter (optional, defaults to defaultFilterHtml)
+ * @param {number} options.maxInvoices - Max number of invoices to download (default: 12)
  * @returns {string[]} Array of downloaded file paths
  */
 async function downloadAllInvoices(page, downloadPath, siteName, executionLog, options = {}) {
   const filterHtml = options.filterHtml || defaultFilterHtml;
+  const maxInvoices = options.maxInvoices ?? 12;
   const allDownloadedFiles = [];
   let currentPage = 1;
   let pagesProcessed = 0;
 
-  log(`${siteName.toUpperCase()} INVOICE_DOWNLOADER: Starting download loop`);
+  log(`${siteName.toUpperCase()} INVOICE_DOWNLOADER: Starting download loop (max ${maxInvoices} invoices)`);
 
   while (currentPage <= MAX_PAGES) {
     log(`${siteName.toUpperCase()} PAGE_${currentPage}: Processing page ${currentPage}`);
@@ -138,11 +140,18 @@ async function downloadAllInvoices(page, downloadPath, siteName, executionLog, o
     }
 
     // 4. Download one by one
-    const pageFiles = await attemptDownloads(page, selectors, downloadPath, executionLog, siteName);
+    const remaining = maxInvoices - allDownloadedFiles.length;
+    const pageFiles = await attemptDownloads(page, selectors, downloadPath, executionLog, siteName, remaining);
     const filePaths = pageFiles.map(f => f.filePath);
     allDownloadedFiles.push(...filePaths);
     pagesProcessed++;
-    log(`${siteName.toUpperCase()} PAGE_${currentPage}: Downloaded ${pageFiles.length} file(s) (total: ${allDownloadedFiles.length})`);
+    log(`${siteName.toUpperCase()} PAGE_${currentPage}: Downloaded ${pageFiles.length} file(s) (total: ${allDownloadedFiles.length}/${maxInvoices})`);
+
+    // Check if we reached the max
+    if (allDownloadedFiles.length >= maxInvoices) {
+      log(`${siteName.toUpperCase()} PAGE_${currentPage}: Reached max invoices limit (${maxInvoices}) — stopping`);
+      break;
+    }
 
     // 5. AI call #3 — check for pagination
     log(`${siteName.toUpperCase()} PAGE_${currentPage}: Checking for pagination...`);
