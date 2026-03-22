@@ -10,9 +10,10 @@ const { parseSiteFilter } = require('./utils/siteFilter');
 async function main() {
   log("===== INVOICES BOT STARTED =====");
 
-  // Parse site filter from CLI args: node main.js "dropcontact et hyperline"
+  // Parse site filter + mode from CLI args: node main.js "batch dropcontact et hyperline"
   const rawFilter = process.argv.slice(2).join(' ');
-  const siteFilter = await parseSiteFilter(rawFilter);
+  const { sites: siteFilter, mode } = await parseSiteFilter(rawFilter);
+  log(`Download mode: ${mode}`);
 
   // Initialize execution logger (JSON structured logs)
   const executionLog = new ExecutionLogger();
@@ -61,7 +62,7 @@ async function main() {
     browser = await createBrowser(selectedProfile);
 
     // Execute all scrapers with execution logging
-    const allDownloadedFiles = await runAllScrapers(browser, executionLog, siteFilter, folderManager);
+    const allDownloadedFiles = await runAllScrapers(browser, executionLog, siteFilter, folderManager, mode);
 
     log(`===== DOWNLOAD COMPLETE: ${allDownloadedFiles.length} file(s) =====`);
 

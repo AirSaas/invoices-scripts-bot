@@ -10,7 +10,32 @@ const hyperlineBot = require('../sites/hyperline');
 const bettercontactBot = require('../sites/bettercontact');
 const dedupeBot = require('../sites/dedupe');
 
-async function runAllScrapers(browser, executionLog, siteFilter = [], folderManager = null) {
+// Download mode defaults
+const MODE_DEFAULTS = {
+  batch: 3,
+  all: 12,
+};
+
+// Per-site overrides (optional). Set batch/all to override the default for a specific site.
+// Example: { batch: 5, all: 20 }
+const SITE_CONFIG = {
+  dropcontact: {},
+  fullenrich: {},
+  hyperline: {},
+  bettercontact: {},
+  sejda: {},
+  dedupe: {},
+};
+
+/**
+ * Get maxInvoices for a site based on mode and per-site config.
+ */
+function getMaxInvoices(siteName, mode) {
+  const siteConf = SITE_CONFIG[siteName] || {};
+  return siteConf[mode] ?? MODE_DEFAULTS[mode] ?? MODE_DEFAULTS.batch;
+}
+
+async function runAllScrapers(browser, executionLog, siteFilter = [], folderManager = null, mode = 'batch') {
   let allDownloadedFiles = [];
 
   // List of scrapers to run
@@ -26,10 +51,10 @@ async function runAllScrapers(browser, executionLog, siteFilter = [], folderMana
   const scrapers = filterScrapers(allScrapers, siteFilter);
 
   if (siteFilter.length > 0) {
-    log(`===== STARTING SCRAPERS (filtered: ${siteFilter.join(', ')}) =====`);
+    log(`===== STARTING SCRAPERS (filtered: ${siteFilter.join(', ')}, mode: ${mode}) =====`);
     log(`Running ${scrapers.length}/${allScrapers.length} scrapers`);
   } else {
-    log("===== STARTING SCRAPERS (all) =====");
+    log(`===== STARTING SCRAPERS (all, mode: ${mode}) =====`);
   }
 
   // Run each scraper
@@ -42,8 +67,9 @@ async function runAllScrapers(browser, executionLog, siteFilter = [], folderMana
     }
 
     try {
-      log(`===== EXECUTING ${scraper.name.toUpperCase()} SCRAPER =====`);
-      const files = await scraper.bot.run(browser, executionLog, folderManager);
+      const maxInvoices = getMaxInvoices(siteName, mode);
+      log(`===== EXECUTING ${scraper.name.toUpperCase()} SCRAPER (max: ${maxInvoices} invoices) =====`);
+      const files = await scraper.bot.run(browser, executionLog, folderManager, { maxInvoices });
 
       if (files && files.length > 0) {
         allDownloadedFiles.push(...files);
@@ -87,4 +113,4 @@ async function runAllScrapers(browser, executionLog, siteFilter = [], folderMana
   return allDownloadedFiles;
 }
 
-module.exports = { runAllScrapers };
+module.exports = { runAllScrapers, MODE_DEFAULTS, SITE_CONFIG };
