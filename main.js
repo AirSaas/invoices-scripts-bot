@@ -13,20 +13,7 @@ async function main() {
 
   // Parse site filter from CLI args: node main.js "dropcontact et hyperline"
   const rawFilter = process.argv.slice(2).join(' ');
-  const { matched: siteFilter, unknown } = parseSiteFilter(rawFilter);
-
-  if (rawFilter) {
-    log(`Site filter input: "${rawFilter}"`);
-    if (siteFilter.length > 0) {
-      log(`Sites to run: ${siteFilter.join(', ')}`);
-    }
-    if (unknown.length > 0) {
-      log(`WARNING: Unrecognized sites: ${unknown.join(', ')}`);
-    }
-    if (siteFilter.length === 0 && unknown.length > 0) {
-      log(`ERROR: No valid sites found in "${rawFilter}". Running all sites.`);
-    }
-  }
+  const siteFilter = await parseSiteFilter(rawFilter);
 
   // Initialize execution logger (JSON structured logs)
   const executionLog = new ExecutionLogger();
