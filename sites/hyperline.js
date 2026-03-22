@@ -1,7 +1,6 @@
 const path = require('path');
 const { log } = require('../utils/logger');
-const { findCandidateElements, getCssSelectors } = require('../utils/selectorAI');
-const { attemptDownloads } = require('../utils/download');
+const { downloadAllInvoices } = require('../utils/invoiceDownloader');
 
 const SITE_NAME = 'hyperline';
 const TARGET_URL = 'https://app.hyperline.co/app/settings/billing';
@@ -212,7 +211,7 @@ function filterHtmlForAI(html) {
   return filtered;
 }
 
-async function run(context) {
+async function run(context, executionLog) {
   const page = await context.newPage();
   
   // Suprimir logs de console de la página para evitar spam en logs
@@ -323,106 +322,27 @@ async function run(context) {
       }
     }
 
-    // Filtrar el HTML para reducir el tamaño antes de enviarlo a la IA
-    log(`${SITE_NAME.toUpperCase()} Filtering HTML to reduce size for AI...`);
-    const filteredHtml = filterHtmlForAI(html);
-    log(`${SITE_NAME.toUpperCase()} Filtered HTML size: ${filteredHtml.length} chars (reduced from ${html.length})`);
-
-    // Debug logging - HTML files disabled
-
-    // Verificar si hay elementos de facturación
-    const billingKeywords = ['invoice', 'billing', 'payment', 'subscription', 'receipt'];
-    const foundKeywords = billingKeywords.filter(keyword => filteredHtml.toLowerCase().includes(keyword));
-    
-    if (foundKeywords.length > 0) {
-      log(`${SITE_NAME.toUpperCase()} BILLING_ELEMENTS_DETECTED: Found keywords: ${foundKeywords.join(', ')}`);
-    } else {
-      log(`${SITE_NAME.toUpperCase()} NO_BILLING_ELEMENTS: No billing keywords found in filtered HTML`);
-    }
-
-    // Verificar si hay enlaces de descarga potenciales
-    const downloadKeywords = ['download', 'pdf', 'invoice', 'receipt'];
-    const foundDownloadKeywords = downloadKeywords.filter(keyword => filteredHtml.toLowerCase().includes(keyword));
-    
-    if (foundDownloadKeywords.length > 0) {
-      log(`${SITE_NAME.toUpperCase()} DOWNLOAD_ELEMENTS_DETECTED: Found keywords: ${foundDownloadKeywords.join(', ')}`);
-    } else {
-      log(`${SITE_NAME.toUpperCase()} NO_DOWNLOAD_ELEMENTS: No download keywords found`);
-    }
-
-    // Verificar si hay facturas disponibles antes de llamar a la IA
-    if (filteredHtml.includes('No invoices') || 
-        filteredHtml.includes('No billing history') || 
-        filteredHtml.includes('No payments') ||
-        filteredHtml.includes('Empty') ||
-        (filteredHtml.includes('billing') && filteredHtml.length < 2000)) {
-      log(`${SITE_NAME.toUpperCase()} NO_INVOICES_AVAILABLE: No invoices found or billing section is empty`);
-      throw new Error('No invoices available for download. Billing section appears to be empty.');
-    }
-
-    // Primero intentar navegar a la página de invoices si se encuentra
+    // Try to navigate to the Invoices sub-page first
     log(`${SITE_NAME.toUpperCase()} LOOKING_FOR_INVOICES_PAGE: Searching for invoices page link...`);
-    
+
     try {
       await page.waitForSelector('a:has-text("Invoices")', { timeout: 5000 });
       await page.click('a:has-text("Invoices")');
       log(`${SITE_NAME.toUpperCase()} NAVIGATED_TO_INVOICES: Clicked on Invoices link`);
-      
-      // Esperar a que cargue la página de invoices
       await page.waitForTimeout(6000);
-      
-      // Obtener el HTML de la página de invoices
-      const invoicesHtml = await page.content();
-      log(`${SITE_NAME.toUpperCase()} INVOICES_PAGE_HTML: ${invoicesHtml.length} chars`);
-      
-      // Filtrar el HTML de la página de invoices
-      const filteredInvoicesHtml = filterHtmlForAI(invoicesHtml);
-      log(`${SITE_NAME.toUpperCase()} FILTERED_INVOICES_HTML: ${filteredInvoicesHtml.length} chars`);
-      
-      // Buscar elementos de descarga en la página de invoices
-      const invoiceCandidates = await findCandidateElements(filteredInvoicesHtml);
-      log(`${SITE_NAME.toUpperCase()} INVOICE_CANDIDATES_FROM_AI ${invoiceCandidates.length}`);
-      
-      if (invoiceCandidates.length > 0) {
-        const invoiceSelectors = await getCssSelectors(invoiceCandidates);
-        log(`${SITE_NAME.toUpperCase()} INVOICE_SELECTORS_FROM_AI ${invoiceSelectors.length}`);
-        log(`AI suggested invoice selectors: ${invoiceSelectors.join(', ')}`);
-        
-        downloadedFiles = await attemptDownloads(page, invoiceSelectors, downloadPath);
-        
-        if (downloadedFiles.length > 0) {
-          log(`${SITE_NAME.toUpperCase()} INVOICES_DOWNLOADED: Successfully downloaded ${downloadedFiles.length} files from invoices page`);
-          return downloadedFiles;
-        }
-      }
-      
-    } catch (error) {
-      log(`${SITE_NAME.toUpperCase()} INVOICES_PAGE_ERROR: ${error.message}`);
+    } catch (navError) {
+      log(`${SITE_NAME.toUpperCase()} INVOICES_PAGE_NAV_ERROR: ${navError.message} — using current page`);
     }
 
-    // Si no se pudo navegar a invoices o no se encontraron descargas, usar la página actual
-    log(`${SITE_NAME.toUpperCase()} FALLBACK_TO_CURRENT_PAGE: Using current page for download search...`);
-    
-    // Llamada a IA #1 - Buscar elementos candidatos para descargar facturas
-    const candidates = await findCandidateElements(filteredHtml);
-    log(`${SITE_NAME.toUpperCase()} CANDIDATES_FROM_AI ${candidates.length}`);
-    if (candidates.length === 0) {
-      log(`${SITE_NAME.toUpperCase()} DEBUG: No candidates found by AI`);
-      throw new Error('AI did not find any download candidates.');
+    // Use the unified download+pagination loop
+    if (executionLog) {
+      executionLog.setSiteUrl(SITE_NAME, TARGET_URL);
+      executionLog.setCurrentUrl(SITE_NAME, page.url());
     }
 
-    const selectors = await getCssSelectors(candidates);
-    log(`${SITE_NAME.toUpperCase()} SELECTORS_FROM_AI ${selectors.length}`);
-    if (selectors.length === 0) {
-      throw new Error('AI did not generate any CSS selectors.');
-    }
-    log(`AI suggested selectors: ${selectors.join(', ')}`);
-
-    downloadedFiles = await attemptDownloads(page, selectors, downloadPath);
-
-    if (downloadedFiles.length === 0) {
-      log(`${SITE_NAME.toUpperCase()} AI selectors failed to trigger a download.`);
-    }
+    downloadedFiles = await downloadAllInvoices(page, downloadPath, SITE_NAME, executionLog, {
+      filterHtml: filterHtmlForAI,
+    });
 
     log(`${SITE_NAME.toUpperCase()} DONE ${downloadedFiles.length} file(s)`);
 

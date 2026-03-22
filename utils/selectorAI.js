@@ -82,4 +82,50 @@ Devuelve exactamente un máximo de 8 selectores como un array de strings. El JSO
   return content.selectors || []; // Asumiendo que la IA devuelve una clave "selectors"
 }
 
-module.exports = { findCandidateElements, getCssSelectors };
+async function findPaginationElement(html) {
+  const prompt = `Analyze the following HTML and determine if there is a pagination element to navigate to the next page of results (invoices, billing history, etc.).
+
+LOOK FOR:
+1. "Next" / "Suivant" / "Siguiente" buttons or links
+2. Arrow icons or chevrons (→, >, ›, chevron-right, arrow-right)
+3. Numbered page links (1, 2, 3...) — return the selector for the NEXT page number
+4. "Load more" / "Charger plus" / "Ver más" / "Afficher plus" buttons
+5. "Show more" / "Voir plus" / "Mostrar más" buttons
+6. Any element with aria-label or title indicating "next page" in any language
+7. Scroll containers with lazy-loaded content (infinite scroll indicators)
+
+RETURN a JSON object with:
+- "found": boolean — true if pagination element exists
+- "type": string — "next_button", "page_number", "load_more", "infinite_scroll", or "none"
+- "selector": string — CSS selector for the element to click (null if type is "infinite_scroll" or "none")
+- "reason": string — brief explanation of what was found
+
+RULES:
+- Use ':has-text("exact text")' for text matching, NOT :contains()
+- No spaces in attribute selectors
+- Prefer stable selectors (data-*, id, aria-label)
+- Support French, English, and Spanish text
+- If multiple pagination elements exist, prefer "Next" button over page numbers
+- Do NOT return disabled or greyed-out pagination elements (check for disabled, aria-disabled, class*="disabled")
+- If no pagination is found, return found: false`;
+
+  const response = await openai.chat.completions.create({
+    model: model,
+    messages: [
+      {
+        role: "system",
+        content: prompt,
+      },
+      {
+        role: "user",
+        content: html,
+      },
+    ],
+    response_format: { type: "json_object" },
+  });
+  const content = JSON.parse(response.choices[0].message.content);
+  log(`selectorAI PAGINATION_RESULT ${JSON.stringify(content)}`);
+  return content;
+}
+
+module.exports = { findCandidateElements, getCssSelectors, findPaginationElement };

@@ -1,7 +1,6 @@
 const path = require('path');
 const { log } = require('../utils/logger');
-const { findCandidateElements, getCssSelectors } = require('../utils/selectorAI');
-const { attemptDownloads } = require('../utils/download');
+const { downloadAllInvoices } = require('../utils/invoiceDownloader');
 
 const SITE_NAME = 'dropcontact';
 const TARGET_URL = 'https://app.dropcontact.com/billing';
@@ -195,7 +194,7 @@ async function handleGoogleLogin(page) {
   }
 }
 
-async function run(context) {
+async function run(context, executionLog) {
   const page = await context.newPage();
   
   // Suprimir logs de console de la página para evitar spam en logs
@@ -256,52 +255,15 @@ async function run(context) {
       await page.waitForTimeout(5000);
     }
 
-    const html = await page.content();
-    log(`${SITE_NAME.toUpperCase()} HTML content fetched (${html.length} chars)`);
-
-    // Verificar si el HTML contiene contenido útil
-    if (html.length < 1000) {
-      log(`${SITE_NAME.toUpperCase()} WARNING: HTML content seems too short, might be blocked or redirected`);
+    // Use the unified download+pagination loop
+    if (executionLog) {
+      executionLog.setSiteUrl(SITE_NAME, TARGET_URL);
+      executionLog.setCurrentUrl(SITE_NAME, page.url());
     }
 
-    // Filtrar el HTML para reducir el tamaño antes de enviarlo a la IA
-    log(`${SITE_NAME.toUpperCase()} Filtering HTML to reduce size for AI...`);
-    const filteredHtml = filterHtmlForAI(html);
-    log(`${SITE_NAME.toUpperCase()} Filtered HTML size: ${filteredHtml.length} chars (reduced from ${html.length})`);
-
-    // Verificar si hay enlaces a Stripe (facturas)
-    if (filteredHtml.includes('pay.stripe.com/invoice')) {
-      log(`${SITE_NAME.toUpperCase()} STRIPE_INVOICE_DETECTED: Found Stripe invoice links`);
-    } else {
-      log(`${SITE_NAME.toUpperCase()} NO_STRIPE_LINKS: No Stripe invoice links found in filtered HTML`);
-    }
-
-    // Verificar si hay facturas disponibles antes de llamar a la IA
-    if (filteredHtml.includes('<table><tbody></tbody></table>')) {
-      log(`${SITE_NAME.toUpperCase()} NO_INVOICES_AVAILABLE: Billing history table is empty`);
-      throw new Error('No invoices available for download. The billing history table is empty.');
-    }
-
-    // Llamada a IA #1 (ahora sin la palabra clave específica)
-    const candidates = await findCandidateElements(filteredHtml);
-    log(`${SITE_NAME.toUpperCase()} CANDIDATES_FROM_AI ${candidates.length}`);
-    if (candidates.length === 0) {
-      log(`${SITE_NAME.toUpperCase()} DEBUG: No candidates found by AI`);
-      throw new Error('AI did not find any download candidates.');
-    }
-
-    const selectors = await getCssSelectors(candidates);
-    log(`${SITE_NAME.toUpperCase()} SELECTORS_FROM_AI ${selectors.length}`);
-    if (selectors.length === 0) {
-      throw new Error('AI did not generate any CSS selectors.');
-    }
-    log(`AI suggested selectors: ${selectors.join(', ')}`);
-
-    downloadedFiles = await attemptDownloads(page, selectors, downloadPath);
-
-    if (downloadedFiles.length === 0) {
-      log(`${SITE_NAME.toUpperCase()} AI selectors failed to trigger a download.`);
-    }
+    downloadedFiles = await downloadAllInvoices(page, downloadPath, SITE_NAME, executionLog, {
+      filterHtml: filterHtmlForAI,
+    });
 
     log(`${SITE_NAME.toUpperCase()} DONE ${downloadedFiles.length} file(s)`);
 

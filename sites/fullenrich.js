@@ -1,7 +1,6 @@
 const path = require('path');
 const { log } = require('../utils/logger');
-const { findCandidateElements, getCssSelectors } = require('../utils/selectorAI');
-const { attemptDownloads } = require('../utils/download');
+const { downloadAllInvoices } = require('../utils/invoiceDownloader');
 
 const SITE_NAME = 'fullenrich';
 const TARGET_URL = 'https://app.fullenrich.com/app/settings/billing';
@@ -407,7 +406,7 @@ function filterHtmlForAI(html) {
   return filtered;
 }
 
-async function run(context) {
+async function run(context, executionLog) {
   const page = await context.newPage();
   
   // Suprimir logs de console de la página para evitar spam en logs
@@ -473,7 +472,7 @@ async function run(context) {
         log(`${SITE_NAME.toUpperCase()} UPDATED_HTML: ${updatedHtml.length} chars after login`);
         
         // Continuar con el HTML actualizado
-        return await processBillingPage(page, updatedHtml, downloadPath);
+        return await processBillingPage(page, downloadPath, executionLog);
         
       } catch (loginError) {
         log(`${SITE_NAME.toUpperCase()} LOGIN_FAILED: ${loginError.message}`);
@@ -539,7 +538,7 @@ async function run(context) {
         log(`${SITE_NAME.toUpperCase()} UPDATED_HTML: ${updatedHtml.length} chars after login`);
         
         // Continuar con el HTML actualizado
-        downloadedFiles = await processBillingPage(page, updatedHtml, downloadPath);
+        downloadedFiles = await processBillingPage(page, downloadPath, executionLog);
         
       } catch (loginError) {
         log(`${SITE_NAME.toUpperCase()} LOGIN_FAILED: ${loginError.message}`);
@@ -547,7 +546,7 @@ async function run(context) {
       }
     } else {
       // Continuar con el procesamiento normal de la página de facturación
-      downloadedFiles = await processBillingPage(page, html, downloadPath);
+      downloadedFiles = await processBillingPage(page, downloadPath, executionLog);
     }
 
   } catch (error) {
@@ -558,31 +557,11 @@ async function run(context) {
   return downloadedFiles;
 }
 
-// Función para procesar la página de facturación después del login
-async function processBillingPage(page, html, downloadPath) {
+// Process billing page: navigate to invoices sub-page if possible, then download with pagination
+async function processBillingPage(page, downloadPath, executionLog) {
   log(`${SITE_NAME.toUpperCase()} PROCESSING_BILLING_PAGE: Starting billing page analysis...`);
-  
-  // Filtrar el HTML para reducir el tamaño antes de enviarlo a la IA
-  log(`${SITE_NAME.toUpperCase()} Filtering HTML to reduce size for AI...`);
-  const filteredHtml = filterHtmlForAI(html);
-  log(`${SITE_NAME.toUpperCase()} Filtered HTML size: ${filteredHtml.length} chars (reduced from ${html.length})`);
 
-  // Verificar si hay enlaces específicos de FullEnrich
-  if (filteredHtml.includes('invoices & manage subscription') || filteredHtml.includes('historique de facturation')) {
-    log(`${SITE_NAME.toUpperCase()} FULLENRICH_BILLING_ELEMENTS_DETECTED: Found FullEnrich-specific billing elements`);
-  } else {
-    log(`${SITE_NAME.toUpperCase()} NO_FULLENRICH_BILLING_ELEMENTS: No FullEnrich-specific billing elements found`);
-  }
-
-  // Verificar si hay facturas disponibles antes de llamar a la IA
-  if (filteredHtml.includes('No invoices') || filteredHtml.includes('No billing history') || filteredHtml.includes('Aucune facture')) {
-    log(`${SITE_NAME.toUpperCase()} NO_INVOICES_AVAILABLE: No invoices found`);
-    throw new Error('No invoices available for download. No billing history found.');
-  }
-
-  // Buscar específicamente el enlace "Invoices & Manage subscription"
-  log(`${SITE_NAME.toUpperCase()} LOOKING_FOR_INVOICES_LINK: Searching for invoices management link...`);
-  
+  // Try to navigate to the "Invoices & Manage subscription" link
   const invoiceLinkSelectors = [
     'a:has-text("Invoices & Manage subscription")',
     'a:has-text("Invoices & Manage")',
@@ -591,112 +570,34 @@ async function processBillingPage(page, html, downloadPath) {
     'a:has-text("Factures")',
     'a:has-text("Historique de facturation")',
     'a:has-text("Billing history")',
-    'a:has-text("Afficher plus")',
-    'a:has-text("Show more")',
     'button:has-text("Invoices & Manage subscription")',
     'button:has-text("Invoices & Manage")',
     'button:has-text("Manage subscription")',
-    'div[role="button"]:has-text("Invoices & Manage subscription")',
-    'div[role="button"]:has-text("Invoices & Manage")',
-    'div[role="button"]:has-text("Manage subscription")'
   ];
-  
-  let invoiceLink = null;
+
   for (const selector of invoiceLinkSelectors) {
     try {
-      invoiceLink = page.locator(selector).first();
-      await invoiceLink.waitFor({ timeout: 2000 });
+      const link = page.locator(selector).first();
+      await link.waitFor({ timeout: 2000 });
       log(`${SITE_NAME.toUpperCase()} INVOICE_LINK_FOUND: ${selector}`);
+      await link.click();
+      await page.waitForTimeout(3000);
+      log(`${SITE_NAME.toUpperCase()} NAVIGATED_TO_INVOICES_PAGE: ${page.url()}`);
       break;
     } catch (e) {
-      log(`${SITE_NAME.toUpperCase()} INVOICE_LINK_SELECTOR_FAILED: ${selector} - ${e.message}`);
-      // Continuar con el siguiente selector
+      // Continue to next selector
     }
   }
-  
-  if (invoiceLink) {
-    // Hacer clic en el enlace de facturas
-    log(`${SITE_NAME.toUpperCase()} CLICKING_INVOICE_LINK: Navigating to invoices page...`);
-    await invoiceLink.click();
-    
-    // Esperar a que se cargue la página de facturas
-    await page.waitForTimeout(3000);
-    
-    // Verificar si estamos en una página de Stripe
-    const currentUrl = page.url();
-    log(`${SITE_NAME.toUpperCase()} INVOICES_PAGE_URL: ${currentUrl}`);
-    
-    if (currentUrl.includes('stripe.com') || currentUrl.includes('pay.stripe.com')) {
-      log(`${SITE_NAME.toUpperCase()} STRIPE_PAGE_DETECTED: Now on Stripe invoices page`);
-      
-      // Buscar la factura más reciente (primera en la lista)
-      const latestInvoiceSelectors = [
-        'a[href*="invoice"]:first-child',
-        'tr:first-child a[href*="invoice"]',
-        'a:has-text("Download"):first-child',
-        'a:has-text("Télécharger"):first-child',
-        'button:has-text("Download"):first-child',
-        'button:has-text("Télécharger"):first-child',
-        'a[href*=".pdf"]:first-child',
-        'a[href*="download"]:first-child'
-      ];
-      
-      let latestInvoice = null;
-      for (const selector of latestInvoiceSelectors) {
-        try {
-          latestInvoice = page.locator(selector).first();
-          await latestInvoice.waitFor({ timeout: 2000 });
-          log(`${SITE_NAME.toUpperCase()} LATEST_INVOICE_FOUND: ${selector}`);
-          break;
-        } catch (e) {
-          log(`${SITE_NAME.toUpperCase()} LATEST_INVOICE_SELECTOR_FAILED: ${selector} - ${e.message}`);
-          // Continuar con el siguiente selector
-        }
-      }
-      
-      if (latestInvoice) {
-        // Hacer clic en la factura más reciente para descargarla
-        log(`${SITE_NAME.toUpperCase()} DOWNLOADING_LATEST_INVOICE: Clicking on latest invoice...`);
-        await latestInvoice.click();
-        
-        // Esperar a que se inicie la descarga
-        await page.waitForTimeout(2000);
-        
-        log(`${SITE_NAME.toUpperCase()} LATEST_INVOICE_DOWNLOAD_INITIATED`);
-        return ['latest_invoice_downloaded'];
-      } else {
-        log(`${SITE_NAME.toUpperCase()} NO_LATEST_INVOICE_FOUND: Could not find latest invoice download link`);
-      }
-    } else {
-      log(`${SITE_NAME.toUpperCase()} NOT_ON_STRIPE_PAGE: Current page is not Stripe invoices page`);
-    }
-  } else {
-    log(`${SITE_NAME.toUpperCase()} NO_INVOICE_LINK_FOUND: Could not find invoices management link`);
+
+  // Use the unified download+pagination loop
+  if (executionLog) {
+    executionLog.setSiteUrl(SITE_NAME, TARGET_URL);
+    executionLog.setCurrentUrl(SITE_NAME, page.url());
   }
 
-  // Si no encontramos el enlace específico, usar la IA como fallback
-  log(`${SITE_NAME.toUpperCase()} FALLBACK_TO_AI: Using AI to find download candidates...`);
-  
-  // Llamada a IA como fallback
-  const candidates = await findCandidateElements(filteredHtml);
-  log(`${SITE_NAME.toUpperCase()} CANDIDATES_FROM_AI ${candidates.length}`);
-  if (candidates.length === 0) {
-    log(`${SITE_NAME.toUpperCase()} DEBUG: No candidates found by AI`);
-    throw new Error('AI did not find any download candidates.');
-  }
-
-  const selectors = await getCssSelectors(candidates);
-  log(`${SITE_NAME.toUpperCase()} SELECTORS_FROM_AI ${selectors.length}`);
-  if (selectors.length === 0) {
-    throw new Error('AI did not generate any CSS selectors.');
-  }
-  log(`AI suggested selectors: ${selectors.join(', ')}`);
-
-  const downloadedFiles = await attemptDownloads(page, selectors, downloadPath);
-
-  if (downloadedFiles.length === 0) {
-    log(`${SITE_NAME.toUpperCase()} AI selectors failed to trigger a download.`);
-  }
+  const downloadedFiles = await downloadAllInvoices(page, downloadPath, SITE_NAME, executionLog, {
+    filterHtml: filterHtmlForAI,
+  });
 
   log(`${SITE_NAME.toUpperCase()} DONE ${downloadedFiles.length} file(s)`);
   return downloadedFiles;
