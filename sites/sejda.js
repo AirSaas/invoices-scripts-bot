@@ -14,9 +14,10 @@ async function handleSejdaLogin(page) {
     // Verificar que tenemos las credenciales necesarias
     const email = process.env.SEJDA_EMAIL;
     const password = process.env.SEJDA_PSW;
-    
+
     if (!email || !password) {
-      throw new Error('SEJDA_EMAIL and SEJDA_PSW environment variables are required');
+      log(`${SITE_NAME.toUpperCase()} WARNING: SEJDA_EMAIL/SEJDA_PSW not set - cannot auto-login. Please connect manually via CDP.`);
+      throw new Error('Session expired and no credentials available for auto-login. Connect manually via CDP first.');
     }
     
     log(`${SITE_NAME.toUpperCase()} CREDENTIALS_FOUND: ${email}`);
