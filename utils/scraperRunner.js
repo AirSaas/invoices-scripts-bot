@@ -1,5 +1,6 @@
 const { log } = require('./logger');
 const path = require('path');
+const { filterScrapers } = require('./siteFilter');
 
 // Import all scrapers
 const sejdaBot = require('../sites/sejda');
@@ -9,13 +10,11 @@ const hyperlineBot = require('../sites/hyperline');
 const bettercontactBot = require('../sites/bettercontact');
 const dedupeBot = require('../sites/dedupe');
 
-async function runAllScrapers(browser, executionLog) {
+async function runAllScrapers(browser, executionLog, siteFilter = []) {
   let allDownloadedFiles = [];
 
-  log("===== STARTING SCRAPERS =====");
-
   // List of scrapers to run
-  const scrapers = [
+  const allScrapers = [
     { name: 'Dropcontact', bot: dropcontactBot },
     { name: 'Fullenrich', bot: fullenrichBot },
     { name: 'Hyperline', bot: hyperlineBot },
@@ -23,6 +22,15 @@ async function runAllScrapers(browser, executionLog) {
     //{ name: 'Sejda', bot: sejdaBot },
     { name: 'Dedupe', bot: dedupeBot }
   ];
+
+  const scrapers = filterScrapers(allScrapers, siteFilter);
+
+  if (siteFilter.length > 0) {
+    log(`===== STARTING SCRAPERS (filtered: ${siteFilter.join(', ')}) =====`);
+    log(`Running ${scrapers.length}/${allScrapers.length} scrapers`);
+  } else {
+    log("===== STARTING SCRAPERS (all) =====");
+  }
 
   // Run each scraper
   for (const scraper of scrapers) {
