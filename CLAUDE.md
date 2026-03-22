@@ -56,6 +56,20 @@ Après la dernière tentative (succès ou max atteint), envoyer un message résu
 4. `auth.js` — ajouter l'URL dans `authUrls`
 5. `utils/emailSender.js` — ajouter dans `expectedSites` de `generateDynamicEmailBody`
 
+### Règle authentification (CDP)
+
+Le bot fonctionne en mode CDP : l'utilisateur se connecte manuellement aux sites dans Chrome avant de lancer le bot. Les scrapers **ne doivent jamais exiger de mot de passe** pour fonctionner.
+
+Pattern à suivre dans `sites/{nom}.js` :
+1. Naviguer vers la page cible (factures/billing)
+2. Vérifier si on est redirigé vers une page de login
+3. **Si déjà connecté** → continuer normalement
+4. **Si session expirée et mot de passe dispo** (`process.env.{NOM}_PSW`) → tenter le login auto
+5. **Si session expirée et pas de mot de passe** → log un warning clair et throw (ne pas crasher silencieusement)
+
+Les variables `*_PSW` dans `.env` sont **optionnelles** — c'est un fallback, pas le fonctionnement principal.
+Les variables `*_EMAIL` ne sont utiles que pour sélectionner le bon compte Google si le site utilise Google OAuth avec plusieurs comptes connectés.
+
 ## Conventions
 
 - JavaScript (pas TypeScript), Node.js, CommonJS (`require`/`module.exports`)

@@ -81,13 +81,28 @@ factures/
 
 ## Variables d'environnement
 
+### Requises
+
 | Variable | Description |
 |---|---|
-| `OPENAI_API_KEY` | Clé API OpenAI (utilisée pour la détection de sélecteurs et le filtre de sites) |
+| `OPENAI_API_KEY` | Clé API OpenAI (détection de sélecteurs + filtre de sites) |
 | `CDP_PORT` | Port Chrome DevTools Protocol (défaut: 9222) |
-| `FULLENRICH_EMAIL/PSW` | Credentials Fullenrich |
-| `BETTERCONTACT_EMAIL/PSW` | Credentials BetterContact |
-| `SEJDA_EMAIL/PSW` | Credentials Sejda |
+| `GMAIL_COMPOSE_URL` | URL de composition Gmail |
+| `RECIPIENT_EMAIL` | Email destinataire des factures |
+| `FULLENRICH_EMAIL` | Email du compte Fullenrich (sélection compte Google OAuth) |
+| `BETTERCONTACT_EMAIL` | Email du compte BetterContact (sélection compte Google OAuth) |
+
+### Optionnelles (fallback si session expirée)
+
+| Variable | Description |
+|---|---|
+| `SEJDA_EMAIL` / `SEJDA_PSW` | Login auto Sejda si session expirée |
+| `BETTERCONTACT_PSW` | Login auto BetterContact si session expirée |
+| `FULLENRICH_PSW` | Login auto Fullenrich si session expirée |
+| `GMAIL_PSW` | Login auto Gmail si session expirée |
+| `RECIPIENT_PSW` | Mot de passe destinataire (si nécessaire) |
+
+> **Note** : Le bot fonctionne en mode CDP — tu te connectes manuellement aux sites dans Chrome avant de lancer. Les mots de passe ne sont qu'un filet de sécurité si la session expire en cours d'exécution.
 
 ---
 
@@ -167,6 +182,8 @@ downloadedFiles = await downloadAllInvoices(page, downloadPath, SITE_NAME, execu
 4. **`auth.js`** — ajouter l'URL dans `authUrls`
 
 Le filtre de sites (`siteFilter.js`) se met à jour automatiquement : la liste `AVAILABLE_SITES` doit inclure le nouveau nom, et le prompt système décrit le contexte de chaque site.
+
+**Authentification** : le scraper doit vérifier si l'utilisateur est déjà connecté (via CDP) avant de tenter un login. Les mots de passe (`*_PSW`) sont optionnels — le bot doit fonctionner sans, tant que l'utilisateur se connecte manuellement avant.
 
 ---
 
