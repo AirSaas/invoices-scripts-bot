@@ -1,8 +1,8 @@
 # Invoices Bot
 
-Bot qui télécharge automatiquement les factures depuis 6 plateformes SaaS via Playwright + Chrome.
+Bot qui télécharge automatiquement les factures depuis 5 plateformes SaaS via Playwright + Chrome.
 
-**Sites supportés** : Dropcontact, Fullenrich, Hyperline, BetterContact, Sejda, Dedupe
+**Sites supportés** : Dropcontact, Fullenrich, Hyperline, BetterContact, Dedupe
 
 ---
 
@@ -88,23 +88,14 @@ factures/
 | `OPENAI_API_KEY` | Clé API OpenAI (détection de sélecteurs + filtre de sites) |
 | `CDP_PORT` | Port Chrome DevTools Protocol (défaut: 9222) |
 
-### Optionnelles — envoi email
-
-| Variable | Description |
-|---|---|
-| `GMAIL_COMPOSE_URL` | URL de composition Gmail |
-| `RECIPIENT_EMAIL` | Email destinataire des factures |
-
 ### Optionnelles — fallback login si session expirée
 
 | Variable | Description |
 |---|---|
 | `FULLENRICH_EMAIL` | Sélection compte Google OAuth (si plusieurs comptes) |
 | `BETTERCONTACT_EMAIL` | Sélection compte Google OAuth (si plusieurs comptes) |
-| `SEJDA_EMAIL` / `SEJDA_PSW` | Login auto Sejda |
 | `BETTERCONTACT_PSW` | Login auto BetterContact |
 | `FULLENRICH_PSW` | Login auto Fullenrich |
-| `GMAIL_PSW` | Login auto Gmail |
 
 > **Note** : Le bot fonctionne en mode CDP — tu te connectes manuellement aux sites dans Chrome avant de lancer. Les mots de passe et emails ne sont qu'un filet de sécurité si la session expire en cours d'exécution.
 
@@ -122,7 +113,6 @@ sites/
   fullenrich.js                Scraper Fullenrich
   hyperline.js                 Scraper Hyperline
   bettercontact.js             Scraper BetterContact
-  sejda.js                     Scraper Sejda
   dedupe.js                    Scraper Dedupe
 
 utils/
@@ -133,6 +123,7 @@ utils/
   invoiceDownloader.js         Boucle download + pagination IA
   selectorAI.js                3 appels OpenAI (candidates, selectors, pagination)
   download.js                  Download unitaire (click, event, fallback href)
+  emailSender.js               Envoi Gmail avec pièces jointes (non utilisé actuellement)
   folderManager.js             Création du dossier d'exécution horodaté
   executionLogger.js           Logs JSON structurés par exécution
   logger.js                    Logs texte dans fichier + console

@@ -2,7 +2,7 @@
 
 ## Projet
 
-Bot qui télécharge automatiquement les factures depuis 6 plateformes SaaS (Dropcontact, Fullenrich, Hyperline, BetterContact, Sejda, Dedupe) via Playwright + Chrome, puis les envoie par email via Gmail.
+Bot qui télécharge automatiquement les factures depuis 5 plateformes SaaS (Dropcontact, Fullenrich, Hyperline, BetterContact, Dedupe) via Playwright + Chrome.
 
 ## Architecture
 
@@ -12,7 +12,6 @@ Bot qui télécharge automatiquement les factures depuis 6 plateformes SaaS (Dro
 - `utils/selectorAI.js` — 3 appels OpenAI (findCandidateElements, getCssSelectors, findPaginationElement)
 - `utils/download.js` — download unitaire d'un fichier (click, event download/popup, fallback href)
 - `utils/executionLogger.js` — logs JSON structurés par exécution
-- `utils/emailSender.js` — envoi Gmail avec pièces jointes
 - `utils/browserConfig.js` — connexion CDP ou persistent context
 - `utils/profileManager.js` — menu sélection profil Chrome / CDP
 
@@ -49,12 +48,11 @@ Après la dernière tentative (succès ou max atteint), envoyer un message résu
 
 ## Ajouter un nouveau site
 
-5 fichiers à modifier :
+4 fichiers à modifier :
 1. Créer `sites/{nom}.js` (copier le pattern d'un site existant, adapter login + URL)
 2. `utils/scraperRunner.js` — ajouter l'import et l'entrée dans le tableau `scrapers`
 3. `utils/folderManager.js` — ajouter `factures/{nom}` dans `requiredFolders`
 4. `auth.js` — ajouter l'URL dans `authUrls`
-5. `utils/emailSender.js` — ajouter dans `expectedSites` de `generateDynamicEmailBody`
 
 ### Règle authentification (CDP)
 
