@@ -2,17 +2,18 @@
 
 ## Projet
 
-Bot qui télécharge automatiquement les factures depuis 6 plateformes SaaS (Dropcontact, Fullenrich, Hyperline, BetterContact, Sejda, Dedupe) via Playwright + Chrome, puis les envoie par email via Gmail.
+Bot qui télécharge automatiquement les factures depuis plusieurs SaaS (Dropcontact, Fullenrich, Hyperline, BetterContact, Dedupe) via Playwright + Chrome.
 
 ## Architecture
 
 - `main.js` — point d'entrée, orchestre le flow complet
+- `users.config.js` — config multi-utilisateur (liste des sites par personne)
 - `sites/*.js` — un scraper par site (navigation + login spécifique au site)
+- `utils/userManager.js` — sélection utilisateur (CLI ou menu interactif)
 - `utils/invoiceDownloader.js` — boucle générique : download 1 par 1 + pagination IA
 - `utils/selectorAI.js` — 3 appels OpenAI (findCandidateElements, getCssSelectors, findPaginationElement)
 - `utils/download.js` — download unitaire d'un fichier (click, event download/popup, fallback href)
 - `utils/executionLogger.js` — logs JSON structurés par exécution
-- `utils/emailSender.js` — envoi Gmail avec pièces jointes
 - `utils/browserConfig.js` — connexion CDP ou persistent context
 - `utils/profileManager.js` — menu sélection profil Chrome / CDP
 
@@ -47,14 +48,31 @@ Après la dernière tentative (succès ou max atteint), envoyer un message résu
 - Problèmes restants non résolus (si max 3 tentatives atteint)
 - Changements de code effectués pendant les itérations
 
+## Multi-utilisateur
+
+Le bot supporte plusieurs utilisateurs. La config est dans `users.config.js` :
+
+```js
+const USERS = {
+  bertran: { displayName: 'Bertran', sites: ['dropcontact', 'fullenrich', ...] },
+  simon:   { displayName: 'Simon',   sites: [] },
+};
+```
+
+Usage CLI : `node main.js "bertran batch drop"` ou `node main.js` (menu interactif).
+Les factures sont rangées dans `factures/{user}/YYYY-MM-DD_HHhMM/{site}/`.
+
+### Ajouter un nouvel utilisateur
+
+1 fichier à modifier : `users.config.js` — ajouter une entrée avec `displayName` et `sites`.
+
 ## Ajouter un nouveau site
 
-5 fichiers à modifier :
+4 fichiers à modifier :
 1. Créer `sites/{nom}.js` (copier le pattern d'un site existant, adapter login + URL)
-2. `utils/scraperRunner.js` — ajouter l'import et l'entrée dans le tableau `scrapers`
-3. `utils/folderManager.js` — ajouter `factures/{nom}` dans `requiredFolders`
-4. `auth.js` — ajouter l'URL dans `authUrls`
-5. `utils/emailSender.js` — ajouter dans `expectedSites` de `generateDynamicEmailBody`
+2. `utils/scraperRunner.js` — ajouter une entrée dans `SCRAPER_REGISTRY`
+3. `auth.js` — ajouter l'URL dans `allAuthUrls` (avec le champ `site`)
+4. `users.config.js` — ajouter le site dans les `sites` de l'utilisateur concerné
 
 ### Règle authentification (CDP)
 
@@ -70,11 +88,15 @@ Pattern à suivre dans `sites/{nom}.js` :
 Les variables `*_PSW` dans `.env` sont **optionnelles** — c'est un fallback, pas le fonctionnement principal.
 Les variables `*_EMAIL` ne sont utiles que pour sélectionner le bon compte Google si le site utilise Google OAuth avec plusieurs comptes connectés.
 
+## Git
+
+- À chaque push sur `main`, mettre à jour le `README.md` si les changements l'impactent.
+
 ## Conventions
 
 - JavaScript (pas TypeScript), Node.js, CommonJS (`require`/`module.exports`)
 - Logs texte dans `logs/log-YYYY-MM-DD.txt` via `utils/logger.js`
 - Logs JSON structurés dans `logs/execution-{timestamp}.json` via `utils/executionLogger.js`
-- Factures téléchargées dans `factures/{nom-du-site}/`
+- Factures téléchargées dans `factures/{user}/YYYY-MM-DD_HHhMM/{site}/`
 - Variables d'environnement dans `.env` (voir `.env.example`)
 - Prompts IA en espagnol (historique), multilingue FR/EN/ES pour les sélecteurs

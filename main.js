@@ -6,13 +6,25 @@ const ProfileManager = require('./utils/profileManager');
 const FolderManager = require('./utils/folderManager');
 const ExecutionLogger = require('./utils/executionLogger');
 const { parseSiteFilter } = require('./utils/siteFilter');
+const { selectUser, getAvailableSites } = require('./utils/userManager');
 
 async function main() {
   log("===== INVOICES BOT STARTED =====");
 
-  // Parse site filter from CLI args: node main.js "dropcontact et hyperline"
-  const rawFilter = process.argv.slice(2).join(' ');
-  const siteFilter = await parseSiteFilter(rawFilter);
+  // 1. Select user from CLI args or interactive menu
+  const rawArgs = process.argv.slice(2).join(' ');
+  const { user, remainingArgs } = await selectUser(rawArgs);
+  const userSites = getAvailableSites(user);
+  log(`User: ${user} — sites: ${userSites.join(', ') || 'none'}`);
+
+  if (userSites.length === 0) {
+    log(`WARNING: No sites configured for user "${user}". Edit users.config.js to add sites.`);
+    process.exit(0);
+  }
+
+  // 2. Parse site filter + mode from remaining CLI args
+  const { sites: siteFilter, mode } = await parseSiteFilter(remainingArgs, userSites);
+  log(`Download mode: ${mode}`);
 
   // Initialize execution logger (JSON structured logs)
   const executionLog = new ExecutionLogger();
@@ -20,7 +32,7 @@ async function main() {
   // Initialize folder structure with unique run folder
   let folderManager;
   try {
-    folderManager = new FolderManager();
+    folderManager = new FolderManager(user, userSites);
     log("Initializing required folders...");
     log(`Run folder: ${folderManager.getRunFolder()}`);
     await folderManager.initializeFolders();
@@ -61,7 +73,7 @@ async function main() {
     browser = await createBrowser(selectedProfile);
 
     // Execute all scrapers with execution logging
-    const allDownloadedFiles = await runAllScrapers(browser, executionLog, siteFilter, folderManager);
+    const allDownloadedFiles = await runAllScrapers(browser, executionLog, siteFilter, folderManager, mode, userSites);
 
     log(`===== DOWNLOAD COMPLETE: ${allDownloadedFiles.length} file(s) =====`);
 

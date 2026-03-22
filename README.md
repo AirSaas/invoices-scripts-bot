@@ -1,8 +1,8 @@
 # Invoices Bot
 
-Bot qui télécharge automatiquement les factures depuis 6 plateformes SaaS via Playwright + Chrome.
+Bot qui télécharge automatiquement les factures depuis plusieurs SaaS via Playwright + Chrome.
 
-**Sites supportés** : Dropcontact, Fullenrich, Hyperline, BetterContact, Sejda, Dedupe
+**Sites supportés** : Dropcontact, Fullenrich, Hyperline, BetterContact, Dedupe
 
 ---
 
@@ -17,10 +17,11 @@ cp .env.example .env   # puis remplir les variables
 
 ### 2. Authentification (première fois)
 
-Ouvre un Chrome avec tous les sites en onglets pour se connecter manuellement :
+Ouvre un Chrome avec les sites de l'utilisateur en onglets pour se connecter manuellement :
 
 ```bash
-npm run auth
+npm run auth                    # menu interactif : choix du user
+node auth.js "bertran"          # auth directe pour Bertran
 ```
 
 Se connecter à chaque site, puis fermer le navigateur. La session est sauvegardée.
@@ -36,28 +37,37 @@ Permet de sélectionner/créer un profil Chrome ou de se connecter via CDP (Chro
 ### 4. Lancer le bot
 
 ```bash
-# Tous les sites
+# Menu interactif (choix du user, puis des sites)
 npm start
 
-# Sites spécifiques — en langage naturel
-node main.js "dropcontact et hyperline"
-node main.js "lance drop et better"
-node main.js "juste dedupe"
-node main.js "fullenrich"
+# User + mode + sites — en langage naturel
+node main.js "bertran batch dropcontact et hyperline"
+node main.js "bertran all"
+node main.js "simon batch drop"
+node main.js "bertran juste dedupe"
 ```
+
+**Deux modes de téléchargement :**
+
+| Mode | Défaut | Description |
+|---|---|---|
+| `batch` | 3 factures | Téléchargement rapide (vérification) |
+| `all` | 12 factures | Téléchargement complet |
+
+Le mode par défaut est `batch`. Chaque site peut avoir un override dans `SITE_CONFIG` (`utils/scraperRunner.js`).
 
 Le bot comprend le français naturel grâce à un appel OpenAI (gpt-4o-mini). Si la demande est ambiguë, il pose des questions de clarification dans le terminal :
 
 ```
-$ node main.js "le truc de contacts"
+$ node main.js "bertran le truc de contacts"
 🤖 Par "le truc de contacts", tu veux dire dropcontact, bettercontact, ou fullenrich ?
 👉 better
-SITE_FILTER: AI selected → bettercontact
+SITE_FILTER: AI selected → bettercontact (mode: batch)
 ```
 
 ### 5. Résultat
 
-- Chaque exécution crée un dossier unique : `factures/YYYY-MM-DD_HHhMM/`
+- Chaque exécution crée un dossier unique : `factures/{user}/YYYY-MM-DD_HHhMM/`
 - Les factures sont nommées `YYYY-MM-DD_provider_nom-original.ext` (ex: `2026-03-22_dropcontact_invoice_123.pdf`)
 - Relancer le bot le même jour ne risque pas d'écraser les téléchargements précédents
 - Les logs texte sont dans `logs/log-YYYY-MM-DD.txt`
@@ -67,15 +77,40 @@ Exemple de structure :
 
 ```
 factures/
-  2026-03-22_14h35/
-    dropcontact/
-      2026-03-22_dropcontact_invoice_123.pdf
-    hyperline/
-      2026-03-22_hyperline_receipt_001.pdf
-  2026-03-22_16h20/
-    dropcontact/
-      2026-03-22_dropcontact_invoice_123.pdf
+  bertran/
+    2026-03-22_14h35/
+      dropcontact/
+        2026-03-22_dropcontact_invoice_123.pdf
+      hyperline/
+        2026-03-22_hyperline_receipt_001.pdf
+  simon/
+    2026-03-22_16h20/
+      dropcontact/
+        2026-03-22_dropcontact_invoice_456.pdf
 ```
+
+---
+
+## Multi-utilisateur
+
+La config des utilisateurs est dans `users.config.js` :
+
+```js
+const USERS = {
+  bertran: {
+    displayName: 'Bertran',
+    sites: ['dropcontact', 'fullenrich', 'hyperline', 'bettercontact', 'dedupe'],
+  },
+  simon: {
+    displayName: 'Simon',
+    sites: [],  // à remplir
+  },
+};
+```
+
+**Ajouter un utilisateur** : ajouter une entrée dans `users.config.js` avec `displayName` et `sites`.
+
+**Ajouter un site à un utilisateur** : ajouter le nom du site dans son tableau `sites`.
 
 ---
 
@@ -88,23 +123,14 @@ factures/
 | `OPENAI_API_KEY` | Clé API OpenAI (détection de sélecteurs + filtre de sites) |
 | `CDP_PORT` | Port Chrome DevTools Protocol (défaut: 9222) |
 
-### Optionnelles — envoi email
-
-| Variable | Description |
-|---|---|
-| `GMAIL_COMPOSE_URL` | URL de composition Gmail |
-| `RECIPIENT_EMAIL` | Email destinataire des factures |
-
 ### Optionnelles — fallback login si session expirée
 
 | Variable | Description |
 |---|---|
 | `FULLENRICH_EMAIL` | Sélection compte Google OAuth (si plusieurs comptes) |
 | `BETTERCONTACT_EMAIL` | Sélection compte Google OAuth (si plusieurs comptes) |
-| `SEJDA_EMAIL` / `SEJDA_PSW` | Login auto Sejda |
 | `BETTERCONTACT_PSW` | Login auto BetterContact |
 | `FULLENRICH_PSW` | Login auto Fullenrich |
-| `GMAIL_PSW` | Login auto Gmail |
 
 > **Note** : Le bot fonctionne en mode CDP — tu te connectes manuellement aux sites dans Chrome avant de lancer. Les mots de passe et emails ne sont qu'un filet de sécurité si la session expire en cours d'exécution.
 
@@ -115,6 +141,7 @@ factures/
 ```
 main.js                        Point d'entrée, orchestre le flow
 auth.js                        Script d'authentification manuelle
+users.config.js                Config multi-utilisateur (sites par personne)
 manageProfiles.js              Gestion des profils Chrome
 
 sites/
@@ -122,22 +149,22 @@ sites/
   fullenrich.js                Scraper Fullenrich
   hyperline.js                 Scraper Hyperline
   bettercontact.js             Scraper BetterContact
-  sejda.js                     Scraper Sejda
   dedupe.js                    Scraper Dedupe
 
 utils/
+  userManager.js               Sélection utilisateur (CLI ou menu interactif)
   browserConfig.js             Connexion CDP ou persistent context
   profileManager.js            Sélection profil Chrome / CDP
-  scraperRunner.js             Boucle d'exécution des scrapers
+  scraperRunner.js             Registre des scrapers + boucle d'exécution
   siteFilter.js                Filtre de sites par langage naturel (OpenAI)
   invoiceDownloader.js         Boucle download + pagination IA
   selectorAI.js                3 appels OpenAI (candidates, selectors, pagination)
   download.js                  Download unitaire (click, event, fallback href)
-  folderManager.js             Création du dossier d'exécution horodaté
+  folderManager.js             Création du dossier d'exécution horodaté par user
   executionLogger.js           Logs JSON structurés par exécution
   logger.js                    Logs texte dans fichier + console
 
-factures/                      Factures téléchargées (par run horodaté, par site)
+factures/{user}/               Factures téléchargées (par user, par run, par site)
 logs/                          Logs texte et JSON
 ```
 
@@ -145,9 +172,11 @@ logs/                          Logs texte et JSON
 
 ```
 main.js
-  ├─ parseSiteFilter()         Comprend quels sites lancer (OpenAI chat)
+  ├─ selectUser()              Résout l'utilisateur (CLI ou menu interactif)
+  ├─ parseSiteFilter()         Comprend quels sites lancer (OpenAI chat, scopé au user)
+  ├─ FolderManager(user)       Crée factures/{user}/YYYY-MM-DD_HHhMM/{site}/
   ├─ createBrowser()           Ouvre Chrome (CDP ou profil persistant)
-  ├─ runAllScrapers()          Pour chaque site filtré :
+  ├─ runAllScrapers()          Pour chaque site du user :
   │    └─ site.run()
   │         └─ downloadAllInvoices()    Boucle par page :
   │              ├─ findCandidateElements()   AI #1 : trouve les éléments de download
@@ -162,17 +191,8 @@ main.js
 
 | Option | Défaut | Description |
 |---|---|---|
-| `maxInvoices` | 12 | Nombre max de factures par site |
+| `maxInvoices` | 3 (batch) / 12 (all) | Nombre max de factures par site, selon le mode |
 | `filterHtml` | `defaultFilterHtml` | Fonction custom pour filtrer le HTML avant les appels IA |
-
-Exemple dans un scraper :
-
-```js
-downloadedFiles = await downloadAllInvoices(page, downloadPath, SITE_NAME, executionLog, {
-  maxInvoices: 5,
-  filterHtml: myCustomFilter,
-});
-```
 
 ---
 
@@ -181,11 +201,11 @@ downloadedFiles = await downloadAllInvoices(page, downloadPath, SITE_NAME, execu
 4 fichiers à modifier :
 
 1. **Créer** `sites/{nom}.js` — copier le pattern d'un site existant, adapter login + URL
-2. **`utils/scraperRunner.js`** — ajouter l'import et l'entrée dans le tableau `allScrapers`
-3. **`utils/folderManager.js`** — ajouter le nom du site dans `this.sites`
-4. **`auth.js`** — ajouter l'URL dans `authUrls`
+2. **`utils/scraperRunner.js`** — ajouter une entrée dans `SCRAPER_REGISTRY`
+3. **`auth.js`** — ajouter l'URL dans `allAuthUrls` (avec le champ `site`)
+4. **`users.config.js`** — ajouter le site dans les `sites` de l'utilisateur concerné
 
-Le filtre de sites (`siteFilter.js`) se met à jour automatiquement : la liste `AVAILABLE_SITES` doit inclure le nouveau nom, et le prompt système décrit le contexte de chaque site.
+Le filtre de sites (`siteFilter.js`) s'adapte automatiquement : il reçoit la liste de sites du user en paramètre.
 
 **Authentification** : le scraper doit vérifier si l'utilisateur est déjà connecté (via CDP) avant de tenter un login. Les mots de passe (`*_PSW`) sont optionnels — le bot doit fonctionner sans, tant que l'utilisateur se connecte manuellement avant.
 
@@ -210,6 +230,7 @@ Structure par site avec :
 
 ```
 SITE_FILTER:           Sélection des sites (IA)
+USER_MANAGER:          Sélection de l'utilisateur
 INVOICE_DOWNLOADER:    Boucle principale de download
 PAGE_N:                Traitement de la page N
 DOWNLOAD_HTTP:         Status HTTP des fetches directs

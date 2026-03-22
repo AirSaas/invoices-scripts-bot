@@ -3,18 +3,25 @@ const path = require('path');
 const { log } = require('./logger');
 
 class FolderManager {
-  constructor() {
+  /**
+   * @param {string} userName - User key (e.g. 'bertran')
+   * @param {string[]} userSites - Sites for this user
+   */
+  constructor(userName, userSites = []) {
     this.projectRoot = path.join(__dirname, '..');
-    this.sites = ['dropcontact', 'fullenrich', 'hyperline', 'bettercontact', 'sejda', 'dedupe'];
-    // Generate unique run folder: factures/YYYY-MM-DD_HHhMM/
+    this.userName = userName;
+    this.sites = userSites;
+    // Generate unique run folder: factures/{user}/YYYY-MM-DD_HHhMM/
     const now = new Date();
     const date = now.toISOString().slice(0, 10);
     const hours = String(now.getHours()).padStart(2, '0');
     const minutes = String(now.getMinutes()).padStart(2, '0');
-    this.runFolder = `factures/${date}_${hours}h${minutes}`;
+    this.userFolder = `factures/${userName}`;
+    this.runFolder = `${this.userFolder}/${date}_${hours}h${minutes}`;
     this.requiredFolders = [
       'logs',
       'factures',
+      this.userFolder,
       this.runFolder,
       ...this.sites.map(site => `${this.runFolder}/${site}`)
     ];

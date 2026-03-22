@@ -407,7 +407,7 @@ function filterHtmlForAI(html) {
   return filtered;
 }
 
-async function run(context, executionLog, folderManager) {
+async function run(context, executionLog, folderManager, options = {}) {
   const page = await context.newPage();
 
   // Suprimir logs de console de la página para evitar spam en logs
@@ -598,6 +598,7 @@ async function processBillingPage(page, downloadPath, executionLog) {
 
   const downloadedFiles = await downloadAllInvoices(page, downloadPath, SITE_NAME, executionLog, {
     filterHtml: filterHtmlForAI,
+    maxInvoices: options.maxInvoices,
   });
 
   log(`${SITE_NAME.toUpperCase()} DONE ${downloadedFiles.length} file(s)`);

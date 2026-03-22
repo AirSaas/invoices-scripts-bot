@@ -2,7 +2,15 @@ const OpenAI = require('openai');
 const readline = require('readline');
 const { log } = require('./logger');
 
-const AVAILABLE_SITES = ['dropcontact', 'fullenrich', 'hyperline', 'bettercontact', 'sejda', 'dedupe'];
+// Site context descriptions for the AI prompt
+const SITE_CONTEXT = {
+  dropcontact: 'outil d\'enrichissement de contacts B2B',
+  fullenrich: 'outil d\'enrichissement de données',
+  hyperline: 'plateforme de facturation/billing SaaS',
+  bettercontact: 'outil de recherche de contacts',
+  sejda: 'outil de manipulation de PDF en ligne',
+  dedupe: 'outil de déduplication de données',
+};
 
 /**
  * Ask a question in the terminal and return the user's answer.
@@ -21,40 +29,47 @@ function ask(question) {
  * Use OpenAI chat to understand which sites the user wants to run.
  * Supports multi-turn: if the AI isn't sure, it asks a follow-up question.
  *
- * @param {string} userInput - Natural language input (e.g. "drop et hyperline")
- * @returns {string[]} Array of canonical site names, or [] for "all"
+ * @param {string} userInput - Natural language input (e.g. "batch drop et hyperline")
+ * @param {string[]} availableSites - Sites available for the current user
+ * @returns {{ sites: string[], mode: 'batch'|'all' }} Parsed sites and download mode
  */
-async function parseSiteFilter(userInput) {
+async function parseSiteFilter(userInput, availableSites = []) {
   if (!userInput || !userInput.trim()) {
-    return [];
+    return { sites: [], mode: 'batch' };
   }
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+  const siteContextLines = availableSites
+    .filter(s => SITE_CONTEXT[s])
+    .map(s => `- ${s} : ${SITE_CONTEXT[s]}`)
+    .join('\n');
+
   const systemPrompt = `Tu es un assistant qui aide à sélectionner des sites de facturation à scraper.
 
-SITES DISPONIBLES : ${AVAILABLE_SITES.join(', ')}
+SITES DISPONIBLES : ${availableSites.join(', ')}
 
 CONTEXTE DE CHAQUE SITE :
-- dropcontact : outil d'enrichissement de contacts B2B
-- fullenrich : outil d'enrichissement de données
-- hyperline : plateforme de facturation/billing SaaS
-- bettercontact : outil de recherche de contacts
-- sejda : outil de manipulation de PDF en ligne
-- dedupe : outil de déduplication de données
+${siteContextLines}
 
 RÈGLES :
-1. L'utilisateur va te dire en langage naturel quels sites il veut lancer.
+1. L'utilisateur va te dire en langage naturel quels sites il veut lancer, et éventuellement le MODE de téléchargement.
 2. Tu dois répondre UNIQUEMENT en JSON valide, rien d'autre.
 3. Si tu comprends clairement les sites demandés, réponds :
-   {"sites": ["site1", "site2"], "question": null}
+   {"sites": ["site1", "site2"], "mode": "batch", "question": null}
 4. Si c'est ambigu ou que tu n'es pas sûr, pose UNE question de clarification :
-   {"sites": [], "question": "Ta question ici ?"}
+   {"sites": [], "mode": null, "question": "Ta question ici ?"}
 5. Si l'utilisateur dit "tous", "all", "tout", réponds :
-   {"sites": [], "question": null}   (vide = tous les sites)
+   {"sites": [], "mode": "all", "question": null}   (vide = tous les sites)
 6. Si l'utilisateur mentionne un site qui n'existe PAS dans la liste (ex: "Amazon"), signale-le dans ta question.
 7. Les noms peuvent être abrégés ou mal orthographiés : "drop" = dropcontact, "hyper" = hyperline, "better" = bettercontact, "full" = fullenrich, etc.
-8. N'invente JAMAIS de site qui n'est pas dans la liste.`;
+8. N'invente JAMAIS de site qui n'est pas dans la liste.
+
+MODE DE TÉLÉCHARGEMENT :
+- "batch" : télécharge un petit lot de factures (par défaut 3). Mots-clés : "batch", "lot", "quelques", "les dernières", "rapide", "quick".
+- "all" : télécharge toutes les factures disponibles (par défaut 12). Mots-clés : "all", "tout", "toutes", "complet", "full download", "everything".
+- Si l'utilisateur ne précise pas le mode, utilise "batch" par défaut.
+- Le champ "mode" doit TOUJOURS être "batch" ou "all", jamais null dans la réponse finale.`;
 
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -73,8 +88,8 @@ RÈGLES :
       });
     } catch (err) {
       log(`SITE_FILTER AI_ERROR: ${err.message}`);
-      log(`SITE_FILTER FALLBACK: Running all sites`);
-      return [];
+      log(`SITE_FILTER FALLBACK: Running all sites in batch mode`);
+      return { sites: [], mode: 'batch' };
     }
 
     const raw = response.choices[0].message.content;
@@ -83,7 +98,7 @@ RÈGLES :
       parsed = JSON.parse(raw);
     } catch (e) {
       log(`SITE_FILTER JSON_PARSE_ERROR: ${raw}`);
-      return [];
+      return { sites: [], mode: 'batch' };
     }
 
     // If the AI has a clarifying question, ask the user
@@ -92,8 +107,8 @@ RÈGLES :
       const followUp = await ask(`\n🤖 ${parsed.question}\n👉 `);
 
       if (!followUp) {
-        log('SITE_FILTER: No answer, running all sites');
-        return [];
+        log('SITE_FILTER: No answer, running all sites in batch mode');
+        return { sites: [], mode: 'batch' };
       }
 
       messages.push({ role: 'assistant', content: raw });
@@ -101,19 +116,20 @@ RÈGLES :
       continue;
     }
 
-    // AI returned sites
-    const sites = (parsed.sites || []).filter(s => AVAILABLE_SITES.includes(s));
+    // AI returned sites + mode
+    const sites = (parsed.sites || []).filter(s => availableSites.includes(s));
+    const mode = parsed.mode === 'all' ? 'all' : 'batch';
     if (sites.length > 0) {
-      log(`SITE_FILTER: AI selected → ${sites.join(', ')}`);
+      log(`SITE_FILTER: AI selected → ${sites.join(', ')} (mode: ${mode})`);
     } else {
-      log(`SITE_FILTER: Running all sites`);
+      log(`SITE_FILTER: Running all sites (mode: ${mode})`);
     }
-    return sites;
+    return { sites, mode };
   }
 
   // Max turns reached
-  log('SITE_FILTER: Max turns reached, running all sites');
-  return [];
+  log('SITE_FILTER: Max turns reached, running all sites in batch mode');
+  return { sites: [], mode: 'batch' };
 }
 
 /**
@@ -131,4 +147,4 @@ function filterScrapers(scrapers, siteNames) {
   });
 }
 
-module.exports = { parseSiteFilter, filterScrapers, AVAILABLE_SITES };
+module.exports = { parseSiteFilter, filterScrapers };
