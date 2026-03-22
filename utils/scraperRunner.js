@@ -2,13 +2,15 @@ const { log } = require('./logger');
 const path = require('path');
 const { filterScrapers } = require('./siteFilter');
 
-// Import all scrapers
-const sejdaBot = require('../sites/sejda');
-const dropcontactBot = require('../sites/dropcontact');
-const fullenrichBot = require('../sites/fullenrich');
-const hyperlineBot = require('../sites/hyperline');
-const bettercontactBot = require('../sites/bettercontact');
-const dedupeBot = require('../sites/dedupe');
+// Scraper registry: maps site name to display name and module path
+const SCRAPER_REGISTRY = {
+  dropcontact:   { name: 'Dropcontact',   module: '../sites/dropcontact' },
+  fullenrich:    { name: 'Fullenrich',     module: '../sites/fullenrich' },
+  hyperline:     { name: 'Hyperline',      module: '../sites/hyperline' },
+  bettercontact: { name: 'BetterContact',  module: '../sites/bettercontact' },
+  sejda:         { name: 'Sejda',          module: '../sites/sejda' },
+  dedupe:        { name: 'Dedupe',         module: '../sites/dedupe' },
+};
 
 // Download mode defaults
 const MODE_DEFAULTS = {
@@ -35,19 +37,23 @@ function getMaxInvoices(siteName, mode) {
   return siteConf[mode] ?? MODE_DEFAULTS[mode] ?? MODE_DEFAULTS.batch;
 }
 
-async function runAllScrapers(browser, executionLog, siteFilter = [], folderManager = null, mode = 'batch') {
+/**
+ * Build scraper list from user's sites, using the registry for lazy require.
+ * @param {string[]} userSites - Sites to load
+ */
+function buildScraperList(userSites) {
+  return userSites
+    .filter(s => SCRAPER_REGISTRY[s])
+    .map(s => ({
+      name: SCRAPER_REGISTRY[s].name,
+      bot: require(SCRAPER_REGISTRY[s].module),
+    }));
+}
+
+async function runAllScrapers(browser, executionLog, siteFilter = [], folderManager = null, mode = 'batch', userSites = []) {
   let allDownloadedFiles = [];
 
-  // List of scrapers to run
-  const allScrapers = [
-    { name: 'Dropcontact', bot: dropcontactBot },
-    { name: 'Fullenrich', bot: fullenrichBot },
-    { name: 'Hyperline', bot: hyperlineBot },
-    { name: 'BetterContact', bot: bettercontactBot },
-    //{ name: 'Sejda', bot: sejdaBot },
-    { name: 'Dedupe', bot: dedupeBot }
-  ];
-
+  const allScrapers = buildScraperList(userSites);
   const scrapers = filterScrapers(allScrapers, siteFilter);
 
   if (siteFilter.length > 0) {
@@ -113,4 +119,4 @@ async function runAllScrapers(browser, executionLog, siteFilter = [], folderMana
   return allDownloadedFiles;
 }
 
-module.exports = { runAllScrapers, MODE_DEFAULTS, SITE_CONFIG };
+module.exports = { runAllScrapers, MODE_DEFAULTS, SITE_CONFIG, SCRAPER_REGISTRY };

@@ -2,7 +2,15 @@ const OpenAI = require('openai');
 const readline = require('readline');
 const { log } = require('./logger');
 
-const AVAILABLE_SITES = ['dropcontact', 'fullenrich', 'hyperline', 'bettercontact', 'sejda', 'dedupe'];
+// Site context descriptions for the AI prompt
+const SITE_CONTEXT = {
+  dropcontact: 'outil d\'enrichissement de contacts B2B',
+  fullenrich: 'outil d\'enrichissement de données',
+  hyperline: 'plateforme de facturation/billing SaaS',
+  bettercontact: 'outil de recherche de contacts',
+  sejda: 'outil de manipulation de PDF en ligne',
+  dedupe: 'outil de déduplication de données',
+};
 
 /**
  * Ask a question in the terminal and return the user's answer.
@@ -22,26 +30,27 @@ function ask(question) {
  * Supports multi-turn: if the AI isn't sure, it asks a follow-up question.
  *
  * @param {string} userInput - Natural language input (e.g. "batch drop et hyperline")
+ * @param {string[]} availableSites - Sites available for the current user
  * @returns {{ sites: string[], mode: 'batch'|'all' }} Parsed sites and download mode
  */
-async function parseSiteFilter(userInput) {
+async function parseSiteFilter(userInput, availableSites = []) {
   if (!userInput || !userInput.trim()) {
     return { sites: [], mode: 'batch' };
   }
 
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+  const siteContextLines = availableSites
+    .filter(s => SITE_CONTEXT[s])
+    .map(s => `- ${s} : ${SITE_CONTEXT[s]}`)
+    .join('\n');
+
   const systemPrompt = `Tu es un assistant qui aide à sélectionner des sites de facturation à scraper.
 
-SITES DISPONIBLES : ${AVAILABLE_SITES.join(', ')}
+SITES DISPONIBLES : ${availableSites.join(', ')}
 
 CONTEXTE DE CHAQUE SITE :
-- dropcontact : outil d'enrichissement de contacts B2B
-- fullenrich : outil d'enrichissement de données
-- hyperline : plateforme de facturation/billing SaaS
-- bettercontact : outil de recherche de contacts
-- sejda : outil de manipulation de PDF en ligne
-- dedupe : outil de déduplication de données
+${siteContextLines}
 
 RÈGLES :
 1. L'utilisateur va te dire en langage naturel quels sites il veut lancer, et éventuellement le MODE de téléchargement.
@@ -108,7 +117,7 @@ MODE DE TÉLÉCHARGEMENT :
     }
 
     // AI returned sites + mode
-    const sites = (parsed.sites || []).filter(s => AVAILABLE_SITES.includes(s));
+    const sites = (parsed.sites || []).filter(s => availableSites.includes(s));
     const mode = parsed.mode === 'all' ? 'all' : 'batch';
     if (sites.length > 0) {
       log(`SITE_FILTER: AI selected → ${sites.join(', ')} (mode: ${mode})`);
@@ -138,4 +147,4 @@ function filterScrapers(scrapers, siteNames) {
   });
 }
 
-module.exports = { parseSiteFilter, filterScrapers, AVAILABLE_SITES };
+module.exports = { parseSiteFilter, filterScrapers };

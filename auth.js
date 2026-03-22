@@ -3,6 +3,7 @@ const { log } = require("./utils/logger");
 const { createBrowser, closeBrowser } = require("./utils/browserConfig");
 const ProfileManager = require("./utils/profileManager");
 const FolderManager = require("./utils/folderManager");
+const { selectUser, getAvailableSites } = require("./utils/userManager");
 
 async function auth() {
   log("===== AUTHENTICATION SCRIPT STARTED =====");
@@ -15,9 +16,20 @@ async function auth() {
   );
   log("");
 
+  // Select user from CLI args or interactive menu
+  const rawArgs = process.argv.slice(2).join(" ");
+  const { user } = await selectUser(rawArgs);
+  const userSites = getAvailableSites(user);
+  log(`Authenticating for user: ${user} — sites: ${userSites.join(", ") || "none"}`);
+
+  if (userSites.length === 0) {
+    log(`WARNING: No sites configured for user "${user}". Edit users.config.js to add sites.`);
+    process.exit(0);
+  }
+
   // Initialize folder structure first
   try {
-    const folderManager = new FolderManager();
+    const folderManager = new FolderManager(user, userSites);
     log("🔧 Initializing required folders...");
     await folderManager.initializeFolders();
     
@@ -59,44 +71,56 @@ async function auth() {
     log("===== BROWSER OPENED =====");
     log("Opening required websites in separate tabs...");
 
-    // List of URLs that need authentication
-    const authUrls = [
+    // All available auth URLs (site key used for filtering per user)
+    const allAuthUrls = [
       {
+        site: "bettercontact",
         name: "BetterContact Billing",
         url: "https://app.bettercontact.rocks/billing",
         description: "Billing page to verify access after login",
       },
       {
+        site: "sejda",
         name: "Sejda",
         url: "https://www.sejda.com/account/invoices",
         description: "Sejda invoice access page",
       },
       {
+        site: "dedupe",
         name: "Dedupe",
         url: "https://app.dedupe.ly/company-settings/billing",
         description: "Dedupe billing and invoice history page",
       },
       {
+        site: "dropcontact",
         name: "Dropcontact",
         url: "https://app.dropcontact.io/billing",
         description: "Dropcontact billing and invoice page",
       },
       {
+        site: "fullenrich",
         name: "Fullenrich",
         url: "https://app.fullenrich.com/billing",
         description: "Fullenrich billing and invoice page",
       },
       {
+        site: "hyperline",
         name: "Hyperline",
         url: "https://app.hyperline.co/billing",
         description: "Hyperline billing and invoice page",
       },
       {
+        site: null,
         name: "Gmail",
         url: "https://mail.google.com",
-        description: "Gmail for email sending functionality",
+        description: "Gmail access",
       },
     ];
+
+    // Filter auth URLs to only the user's sites (+ Gmail for everyone)
+    const authUrls = allAuthUrls.filter(
+      (entry) => entry.site === null || userSites.includes(entry.site)
+    );
 
     // Open each URL in a new tab
     for (const site of authUrls) {
