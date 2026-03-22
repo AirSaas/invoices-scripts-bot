@@ -1,6 +1,6 @@
 require("dotenv").config();
 const { log } = require("./utils/logger");
-const { createBrowser } = require("./utils/browserConfig");
+const { createBrowser, closeBrowser } = require("./utils/browserConfig");
 const ProfileManager = require("./utils/profileManager");
 const FolderManager = require("./utils/folderManager");
 
@@ -147,11 +147,18 @@ async function auth() {
       process.on("SIGINT", cleanup);
       process.on("SIGTERM", cleanup);
 
-      // Also listen if browser closes for any external reason
-      browser.on("disconnected", () => {
-        log("Browser disconnected, authentication session may be lost");
-        cleanup();
-      });
+      // Listen for browser close/disconnect
+      if (browser._isCdp && browser._cdpBrowser) {
+        browser._cdpBrowser.on("disconnected", () => {
+          log("CDP connection lost");
+          cleanup();
+        });
+      } else {
+        browser.on("close", () => {
+          log("Browser closed");
+          cleanup();
+        });
+      }
 
       log("Browser is now open and waiting for manual closure...");
       log(
@@ -172,7 +179,7 @@ async function auth() {
   } finally {
     if (browser) {
       try {
-        await browser.close();
+        await closeBrowser(browser);
         log("===== BROWSER CLOSED =====");
       } catch (closeError) {
         log(`BROWSER_CLOSE_ERROR: ${closeError.message}`);

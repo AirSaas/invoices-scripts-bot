@@ -5,15 +5,18 @@ const { log } = require('./logger');
 class FolderManager {
   constructor() {
     this.projectRoot = path.join(__dirname, '..');
+    this.sites = ['dropcontact', 'fullenrich', 'hyperline', 'bettercontact', 'sejda', 'dedupe'];
+    // Generate unique run folder: factures/YYYY-MM-DD_HHhMM/
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10);
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    this.runFolder = `factures/${date}_${hours}h${minutes}`;
     this.requiredFolders = [
       'logs',
       'factures',
-      'factures/dropcontact',
-      'factures/fullenrich',
-      'factures/hyperline',
-      'factures/bettercontact',
-      'factures/sejda',
-      'factures/dedupe'
+      this.runFolder,
+      ...this.sites.map(site => `${this.runFolder}/${site}`)
     ];
   }
 
@@ -55,6 +58,16 @@ class FolderManager {
   // Get the full path for a specific folder
   getFolderPath(folderName) {
     return path.join(this.projectRoot, folderName);
+  }
+
+  // Get the download path for a site in the current run
+  getSiteDownloadPath(siteName) {
+    return path.join(this.projectRoot, this.runFolder, siteName);
+  }
+
+  // Get the current run folder name
+  getRunFolder() {
+    return this.runFolder;
   }
 
   // Check if all required folders exist

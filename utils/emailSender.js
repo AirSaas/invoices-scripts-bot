@@ -704,8 +704,8 @@ async function handleGmailAuthentication(page) {
             // Get password from environment variable
             const password = process.env.GMAIL_PSW;
             if (!password) {
-              log("GMAIL_AUTH: WARNING: GMAIL_PSW environment variable not set");
-              throw new Error('GMAIL_PSW environment variable is required for password field');
+              log("GMAIL_AUTH: WARNING: GMAIL_PSW not set - cannot auto-login. Please connect manually via CDP.");
+              throw new Error('Session expired and no credentials available for auto-login. Connect manually via CDP first.');
             }
             
             // Clear field and type password

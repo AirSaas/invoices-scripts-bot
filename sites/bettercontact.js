@@ -1,7 +1,6 @@
 const path = require('path');
 const { log } = require('../utils/logger');
-const { findCandidateElements, getCssSelectors } = require('../utils/selectorAI');
-const { attemptDownloads } = require('../utils/download');
+const { downloadAllInvoices } = require('../utils/invoiceDownloader');
 
 const SITE_NAME = 'bettercontact';
 const TARGET_URL = 'https://app.bettercontact.rocks/billing';
@@ -383,8 +382,8 @@ async function handleGoogleLogin(page) {
             // Obtener la contraseña de la variable de entorno
             const password = process.env.BETTERCONTACT_PSW;
             if (!password) {
-              log(`${SITE_NAME.toUpperCase()} WARNING: BETTERCONTACT_PSW environment variable not set`);
-              throw new Error('BETTERCONTACT_PSW environment variable is required for password field');
+              log(`${SITE_NAME.toUpperCase()} WARNING: BETTERCONTACT_PSW not set - cannot auto-login. Please connect manually via CDP.`);
+              throw new Error('Session expired and no credentials available for auto-login. Connect manually via CDP first.');
             }
             
             // Limpiar el campo y escribir la contraseña
@@ -565,14 +564,14 @@ function filterHtmlForAI(html) {
   return filtered;
 }
 
-async function run(context) {
+async function run(context, executionLog, folderManager) {
   const page = await context.newPage();
-  
+
   // Suprimir logs de console de la página para evitar spam en logs
   page.on('console', () => {}); // Ignorar todos los console.log de la página
   page.on('pageerror', () => {}); // Ignorar errores de la página
-  
-  const downloadPath = path.resolve(__dirname, '..', 'factures', SITE_NAME);
+
+  const downloadPath = folderManager ? folderManager.getSiteDownloadPath(SITE_NAME) : path.resolve(__dirname, '..', 'factures', SITE_NAME);
   let downloadedFiles = [];
 
   try {
@@ -674,132 +673,15 @@ async function run(context) {
       }
     }
 
-    const html = await page.content();
-    log(`${SITE_NAME.toUpperCase()} HTML content fetched (${html.length} chars)`);
-
-    // Verificar si el HTML contiene contenido útil
-    if (html.length < 1000) {
-      log(`${SITE_NAME.toUpperCase()} WARNING: HTML content seems too short, might be blocked or redirected`);
+    // Use the unified download+pagination loop
+    if (executionLog) {
+      executionLog.setSiteUrl(SITE_NAME, TARGET_URL);
+      executionLog.setCurrentUrl(SITE_NAME, page.url());
     }
 
-    // Verificar si estamos en la página correcta
-    const title = await page.title();
-    log(`${SITE_NAME.toUpperCase()} PAGE_TITLE: "${title}"`);
-
-    // Verificación final: solo hacer login si realmente estamos en una página de login
-    // Verificar tanto la URL como el contenido para evitar falsos positivos
-    const currentUrl = page.url();
-    const isOnLoginPage = currentUrl.includes('/users/sign_in') || 
-                          currentUrl.includes('/login') || 
-                          currentUrl.includes('/auth');
-    
-    const hasLoginForm = html.toLowerCase().includes('sign in') || 
-                        html.toLowerCase().includes('login') || 
-                        html.toLowerCase().includes('email address') ||
-                        html.toLowerCase().includes('password');
-    
-    // Solo hacer login si estamos en una página de login Y hay un formulario de login
-    if (isOnLoginPage && hasLoginForm) {
-      log(`${SITE_NAME.toUpperCase()} WARNING: Still on login page despite logic - this shouldn't happen`);
-      log(`${SITE_NAME.toUpperCase()} ATTEMPTING_EMERGENCY_LOGIN...`);
-      
-      // Intentar hacer login con Google como último recurso
-      await handleGoogleLogin(page);
-      
-      // Después del login exitoso, recargar la página de billing
-      log(`${SITE_NAME.toUpperCase()} RELOADING_BILLING_PAGE_AFTER_EMERGENCY_LOGIN`);
-      await page.goto(TARGET_URL, { 
-        waitUntil: 'domcontentloaded', 
-        timeout: 30000 
-      });
-      await page.waitForTimeout(5000);
-      
-      // Obtener el HTML actualizado después del login
-      const updatedHtml = await page.content();
-      if (updatedHtml.length > html.length) {
-        log(`${SITE_NAME.toUpperCase()} HTML_UPDATED_AFTER_EMERGENCY_LOGIN: Content loaded successfully`);
-        html = updatedHtml;
-      } else {
-        throw new Error('Emergency login successful but billing page content not accessible');
-      }
-    } else if (hasLoginForm && !isOnLoginPage) {
-      // Si hay elementos de login en el HTML pero no estamos en una página de login,
-      // probablemente son elementos residuales o del layout. Continuar normalmente.
-      log(`${SITE_NAME.toUpperCase()} LOGIN_ELEMENTS_DETECTED_IN_HTML_BUT_NOT_ON_LOGIN_PAGE: Continuing normally`);
-      log(`${SITE_NAME.toUpperCase()} CURRENT_URL: ${currentUrl}`);
-      log(`${SITE_NAME.toUpperCase()} This is normal - login elements can exist in the layout`);
-    } else {
-      log(`${SITE_NAME.toUpperCase()} NO_LOGIN_REQUIRED: Continuing with billing page`);
-    }
-
-    // Verificar si es una SPA que necesita más tiempo para cargar
-    if (html.includes('loading') || html.includes('spinner') || title.toLowerCase().includes('loading')) {
-      log(`${SITE_NAME.toUpperCase()} SPA_DETECTED: Waiting additional time for content to load...`);
-      await page.waitForTimeout(10000);
-      const updatedHtml = await page.content();
-      if (updatedHtml.length > html.length) {
-        log(`${SITE_NAME.toUpperCase()} SPA_CONTENT_UPDATED: Content loaded after waiting`);
-      }
-    }
-
-    // Filtrar el HTML para reducir el tamaño antes de enviarlo a la IA
-    log(`${SITE_NAME.toUpperCase()} Filtering HTML to reduce size for AI...`);
-    const filteredHtml = filterHtmlForAI(html);
-    log(`${SITE_NAME.toUpperCase()} Filtered HTML size: ${filteredHtml.length} chars (reduced from ${html.length})`);
-
-    // Debug logging - HTML files disabled
-
-    // Verificar si hay elementos de facturación
-    const billingKeywords = ['invoice', 'billing', 'payment', 'subscription', 'receipt', 'credits', 'plan'];
-    const foundKeywords = billingKeywords.filter(keyword => filteredHtml.toLowerCase().includes(keyword));
-    
-    if (foundKeywords.length > 0) {
-      log(`${SITE_NAME.toUpperCase()} BILLING_ELEMENTS_DETECTED: Found keywords: ${foundKeywords.join(', ')}`);
-    } else {
-      log(`${SITE_NAME.toUpperCase()} NO_BILLING_ELEMENTS: No billing keywords found in filtered HTML`);
-    }
-
-    // Verificar si hay enlaces de descarga potenciales
-    const downloadKeywords = ['download', 'pdf', 'invoice', 'receipt', 'export', 'csv'];
-    const foundDownloadKeywords = downloadKeywords.filter(keyword => filteredHtml.toLowerCase().includes(keyword));
-    
-    if (foundDownloadKeywords.length > 0) {
-      log(`${SITE_NAME.toUpperCase()} DOWNLOAD_ELEMENTS_DETECTED: Found keywords: ${foundDownloadKeywords.join(', ')}`);
-    } else {
-      log(`${SITE_NAME.toUpperCase()} NO_DOWNLOAD_ELEMENTS: No download keywords found`);
-    }
-
-    // Verificar si hay facturas disponibles antes de llamar a la IA
-    if (filteredHtml.includes('No invoices') || 
-        filteredHtml.includes('No billing history') || 
-        filteredHtml.includes('No payments') ||
-        filteredHtml.includes('No transactions') ||
-        filteredHtml.includes('Empty') ||
-        (filteredHtml.includes('billing') && filteredHtml.length < 2000)) {
-      log(`${SITE_NAME.toUpperCase()} NO_INVOICES_AVAILABLE: No invoices found or billing section is empty`);
-      throw new Error('No invoices available for download. Billing section appears to be empty.');
-    }
-
-    // Llamada a IA #1 - Buscar elementos candidatos para descargar facturas
-    const candidates = await findCandidateElements(filteredHtml);
-    log(`${SITE_NAME.toUpperCase()} CANDIDATES_FROM_AI ${candidates.length}`);
-    if (candidates.length === 0) {
-      log(`${SITE_NAME.toUpperCase()} DEBUG: No candidates found by AI`);
-      throw new Error('AI did not find any download candidates.');
-    }
-
-    const selectors = await getCssSelectors(candidates);
-    log(`${SITE_NAME.toUpperCase()} SELECTORS_FROM_AI ${selectors.length}`);
-    if (selectors.length === 0) {
-      throw new Error('AI did not generate any CSS selectors.');
-    }
-    log(`AI suggested selectors: ${selectors.join(', ')}`);
-
-    downloadedFiles = await attemptDownloads(page, selectors, downloadPath);
-
-    if (downloadedFiles.length === 0) {
-      log(`${SITE_NAME.toUpperCase()} AI selectors failed to trigger a download.`);
-    }
+    downloadedFiles = await downloadAllInvoices(page, downloadPath, SITE_NAME, executionLog, {
+      filterHtml: filterHtmlForAI,
+    });
 
     log(`${SITE_NAME.toUpperCase()} DONE ${downloadedFiles.length} file(s)`);
 
