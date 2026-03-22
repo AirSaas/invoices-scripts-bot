@@ -1,6 +1,6 @@
 # Invoices Bot
 
-Bot qui télécharge automatiquement les factures depuis 5 plateformes SaaS via Playwright + Chrome.
+Bot qui télécharge automatiquement les factures depuis plusieurs SaaS via Playwright + Chrome.
 
 **Sites supportés** : Dropcontact, Fullenrich, Hyperline, BetterContact, Dedupe
 

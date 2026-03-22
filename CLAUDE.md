@@ -2,7 +2,7 @@
 
 ## Projet
 
-Bot qui télécharge automatiquement les factures depuis 5 plateformes SaaS (Dropcontact, Fullenrich, Hyperline, BetterContact, Dedupe) via Playwright + Chrome.
+Bot qui télécharge automatiquement les factures depuis plusieurs SaaS (Dropcontact, Fullenrich, Hyperline, BetterContact, Dedupe) via Playwright + Chrome.
 
 ## Architecture
 
