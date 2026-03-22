@@ -2,7 +2,6 @@ require('dotenv').config();
 const { log } = require('./utils/logger');
 const { createBrowser, closeBrowser } = require('./utils/browserConfig');
 const { runAllScrapers } = require('./utils/scraperRunner');
-const { sendEmail } = require('./utils/emailSender');
 const ProfileManager = require('./utils/profileManager');
 const FolderManager = require('./utils/folderManager');
 const ExecutionLogger = require('./utils/executionLogger');
@@ -62,15 +61,7 @@ async function main() {
     // Execute all scrapers with execution logging
     const allDownloadedFiles = await runAllScrapers(browser, executionLog, siteFilter);
 
-    // Send email if there are downloaded files
-    if (allDownloadedFiles.length > 0) {
-      log("===== SENDING EMAIL =====");
-      log(`Sending email with ${allDownloadedFiles.length} files`);
-      await sendEmail(browser, allDownloadedFiles);
-      log("===== EMAIL SENT =====");
-    } else {
-      log("===== NO FILES TO EMAIL =====");
-    }
+    log(`===== DOWNLOAD COMPLETE: ${allDownloadedFiles.length} file(s) =====`);
 
   } catch (error) {
     log(`===== GENERAL ERROR =====`);

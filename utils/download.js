@@ -16,6 +16,15 @@ function sanitizeFilename(raw, fallbackIndex) {
 }
 
 /**
+ * Build a filename with date and provider prefix: YYYY-MM-DD_provider_originalname.ext
+ */
+function buildPrefixedFilename(originalFilename, siteName) {
+  const today = new Date().toISOString().slice(0, 10);
+  const provider = (siteName || 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return `${today}_${provider}_${originalFilename}`;
+}
+
+/**
  * Safely write a buffer to disk. Returns { success, filePath, fileSize, error }.
  */
 function safeWriteFile(filePath, buffer) {
@@ -59,7 +68,7 @@ async function safeFetch(page, url, fallbackIndex) {
  * Download a single file from a page element.
  * Returns { success, filePath, filename, fileSize, error }
  */
-async function downloadOneFile(page, element, selector, downloadPath, index) {
+async function downloadOneFile(page, element, selector, downloadPath, index, siteName) {
   try {
     // Prepare to wait for download OR new tab
     const downloadPromise = page.waitForEvent('download', { timeout: 8000 });
@@ -90,7 +99,7 @@ async function downloadOneFile(page, element, selector, downloadPath, index) {
         const fetchResult = await safeFetch(page, absoluteHref, index);
         if (!fetchResult.ok) return { success: false, error: fetchResult.error };
 
-        const filename = sanitizeFilename(fetchResult.filename, index);
+        const filename = buildPrefixedFilename(sanitizeFilename(fetchResult.filename, index), siteName);
         const filePath = path.join(downloadPath, filename);
         const writeResult = safeWriteFile(filePath, fetchResult.buffer);
         if (!writeResult.success) return { success: false, error: writeResult.error };
@@ -111,7 +120,7 @@ async function downloadOneFile(page, element, selector, downloadPath, index) {
           const fetchResult = await safeFetch(page, url, index);
           if (!fetchResult.ok) return { success: false, error: fetchResult.error };
 
-          const filename = sanitizeFilename(fetchResult.filename, index);
+          const filename = buildPrefixedFilename(sanitizeFilename(fetchResult.filename, index), siteName);
           const filePath = path.join(downloadPath, filename);
           const writeResult = safeWriteFile(filePath, fetchResult.buffer);
           if (!writeResult.success) return { success: false, error: writeResult.error };
@@ -128,7 +137,7 @@ async function downloadOneFile(page, element, selector, downloadPath, index) {
 
     if (result.suggestedFilename && typeof result.suggestedFilename === 'function') {
       const download = result;
-      filename = sanitizeFilename(download.suggestedFilename(), index);
+      filename = buildPrefixedFilename(sanitizeFilename(download.suggestedFilename(), index), siteName);
       filePath = path.join(downloadPath, filename);
       await download.saveAs(filePath);
       fileSize = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
@@ -147,7 +156,7 @@ async function downloadOneFile(page, element, selector, downloadPath, index) {
           return { success: false, error: fetchResult.error };
         }
 
-        filename = sanitizeFilename(fetchResult.filename, index);
+        filename = buildPrefixedFilename(sanitizeFilename(fetchResult.filename, index), siteName);
         filePath = path.join(downloadPath, filename);
         const writeResult = safeWriteFile(filePath, fetchResult.buffer);
         fileSize = writeResult.fileSize;
@@ -308,7 +317,7 @@ async function attemptDownloads(page, selectors, downloadPath, executionLog, sit
         continue;
       }
 
-      const result = await downloadOneFile(page, element, selector, downloadPath, downloadedFiles.length + 1);
+      const result = await downloadOneFile(page, element, selector, downloadPath, downloadedFiles.length + 1, siteName);
 
       if (result.success) {
         downloadedFiles.push({
