@@ -88,6 +88,10 @@ Pattern à suivre dans `sites/{nom}.js` :
 Les variables `*_PSW` dans `.env` sont **optionnelles** — c'est un fallback, pas le fonctionnement principal.
 Les variables `*_EMAIL` ne sont utiles que pour sélectionner le bon compte Google si le site utilise Google OAuth avec plusieurs comptes connectés.
 
+## Git
+
+- À chaque push sur `main`, mettre à jour le `README.md` si les changements l'impactent.
+
 ## Conventions
 
 - JavaScript (pas TypeScript), Node.js, CommonJS (`require`/`module.exports`)
