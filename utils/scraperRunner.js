@@ -14,12 +14,14 @@ const SCRAPER_REGISTRY = {
 
 // Download mode defaults
 const MODE_DEFAULTS = {
-  batch: 3,
-  all: 12,
+  quarter: 3,
+  year: 12,
 };
 
-// Per-site overrides (optional). Set batch/all to override the default for a specific site.
-// Example: { batch: 5, all: 20 }
+// Per-site config (optional). Only 'target' is used: nb précis de factures à fetch.
+// Sites SANS target sont skippés en mode target.
+// Usage cron : `node main.js "bertran target"` → ne lance que les sites configurés.
+// Example: { target: 5 }
 const SITE_CONFIG = {
   dropcontact: {},
   fullenrich: {},
@@ -31,10 +33,14 @@ const SITE_CONFIG = {
 
 /**
  * Get maxInvoices for a site based on mode and per-site config.
+ * Returns null in 'target' mode if the site has no target config (= skip this site).
  */
 function getMaxInvoices(siteName, mode) {
   const siteConf = SITE_CONFIG[siteName] || {};
-  return siteConf[mode] ?? MODE_DEFAULTS[mode] ?? MODE_DEFAULTS.batch;
+  if (mode === 'target') {
+    return siteConf.target ?? null;
+  }
+  return MODE_DEFAULTS[mode] ?? MODE_DEFAULTS.quarter;
 }
 
 /**
@@ -50,7 +56,7 @@ function buildScraperList(userSites) {
     }));
 }
 
-async function runAllScrapers(browser, executionLog, siteFilter = [], folderManager = null, mode = 'batch', userSites = []) {
+async function runAllScrapers(browser, executionLog, siteFilter = [], folderManager = null, mode = 'quarter', userSites = []) {
   let allDownloadedFiles = [];
 
   const allScrapers = buildScraperList(userSites);
@@ -74,6 +80,10 @@ async function runAllScrapers(browser, executionLog, siteFilter = [], folderMana
 
     try {
       const maxInvoices = getMaxInvoices(siteName, mode);
+      if (maxInvoices === null) {
+        log(`SKIP ${scraper.name.toUpperCase()}: no 'target' config for this site`);
+        continue;
+      }
       log(`===== EXECUTING ${scraper.name.toUpperCase()} SCRAPER (max: ${maxInvoices} invoices) =====`);
       const files = await scraper.bot.run(browser, executionLog, folderManager, { maxInvoices });
 

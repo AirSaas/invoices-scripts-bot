@@ -59,20 +59,29 @@ const USERS = {
 };
 ```
 
-Usage CLI : `node main.js "bertran batch drop"` ou `node main.js` (menu interactif).
+Usage CLI : `node main.js "bertran quarter drop"` ou `node main.js` (menu interactif).
 Les factures sont rangées dans `factures/{user}/YYYY-MM-DD_HHhMM/{site}/`.
 
 ### Ajouter un nouvel utilisateur
 
 1 fichier à modifier : `users.config.js` — ajouter une entrée avec `displayName` et `sites`.
 
-## Ajouter un nouveau site
+## Procédure "Ajouter un nouveau site"
 
-4 fichiers à modifier :
-1. Créer `sites/{nom}.js` (copier le pattern d'un site existant, adapter login + URL)
-2. `utils/scraperRunner.js` — ajouter une entrée dans `SCRAPER_REGISTRY`
-3. `auth.js` — ajouter l'URL dans `allAuthUrls` (avec le champ `site`)
-4. `users.config.js` — ajouter le site dans les `sites` de l'utilisateur concerné
+Quand l'utilisateur demande d'ajouter un site, **poser ces 3 questions AVANT de coder** :
+
+### Questions obligatoires
+
+1. **Nom du site + URL billing** — "Quel est le nom du site et l'URL de la page factures/billing ?"
+2. **Pour quel(s) utilisateur(s) ?** — Lister les users disponibles (lire `users.config.js`). Exemple : "Pour qui ? Users disponibles : Bertran, Simon, Matthieu"
+3. **Nombre de factures spécifique ?** — "Le nombre de factures par défaut est 3 (quarter) / 12 (year). Ce site a-t-il un nombre précis à récupérer (pour le mode cron/target) ?" Si oui → ajouter `target: N` dans `SITE_CONFIG` de `utils/scraperRunner.js`.
+
+### Fichiers à modifier (4 fichiers)
+
+1. **Créer `sites/{nom}.js`** — copier le pattern d'un site existant, adapter login + URL
+2. **`utils/scraperRunner.js`** — ajouter une entrée dans `SCRAPER_REGISTRY` (+ `SITE_CONFIG` si nb custom)
+3. **`auth.js`** — ajouter l'URL dans `allAuthUrls` (avec le champ `site`)
+4. **`users.config.js`** — ajouter le site dans les `sites` du/des utilisateur(s) concerné(s)
 
 ### Règle authentification (CDP)
 
@@ -87,6 +96,10 @@ Pattern à suivre dans `sites/{nom}.js` :
 
 Les variables `*_PSW` dans `.env` sont **optionnelles** — c'est un fallback, pas le fonctionnement principal.
 Les variables `*_EMAIL` ne sont utiles que pour sélectionner le bon compte Google si le site utilise Google OAuth avec plusieurs comptes connectés.
+
+### Test après ajout
+
+Lancer `node auth.js "{user}"` pour ouvrir Chrome et se connecter au nouveau site, puis `node main.js "{user} quarter {site}"` pour tester le téléchargement.
 
 ## Git
 
