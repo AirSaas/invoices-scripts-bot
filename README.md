@@ -87,22 +87,26 @@ factures/
 |---|---|
 | `OPENAI_API_KEY` | Clé API OpenAI (détection de sélecteurs + filtre de sites) |
 | `CDP_PORT` | Port Chrome DevTools Protocol (défaut: 9222) |
-| `GMAIL_COMPOSE_URL` | URL de composition Gmail |
-| `RECIPIENT_EMAIL` | Email destinataire des factures |
-| `FULLENRICH_EMAIL` | Email du compte Fullenrich (sélection compte Google OAuth) |
-| `BETTERCONTACT_EMAIL` | Email du compte BetterContact (sélection compte Google OAuth) |
 
-### Optionnelles (fallback si session expirée)
+### Optionnelles — envoi email
 
 | Variable | Description |
 |---|---|
-| `SEJDA_EMAIL` / `SEJDA_PSW` | Login auto Sejda si session expirée |
-| `BETTERCONTACT_PSW` | Login auto BetterContact si session expirée |
-| `FULLENRICH_PSW` | Login auto Fullenrich si session expirée |
-| `GMAIL_PSW` | Login auto Gmail si session expirée |
-| `RECIPIENT_PSW` | Mot de passe destinataire (si nécessaire) |
+| `GMAIL_COMPOSE_URL` | URL de composition Gmail |
+| `RECIPIENT_EMAIL` | Email destinataire des factures |
 
-> **Note** : Le bot fonctionne en mode CDP — tu te connectes manuellement aux sites dans Chrome avant de lancer. Les mots de passe ne sont qu'un filet de sécurité si la session expire en cours d'exécution.
+### Optionnelles — fallback login si session expirée
+
+| Variable | Description |
+|---|---|
+| `FULLENRICH_EMAIL` | Sélection compte Google OAuth (si plusieurs comptes) |
+| `BETTERCONTACT_EMAIL` | Sélection compte Google OAuth (si plusieurs comptes) |
+| `SEJDA_EMAIL` / `SEJDA_PSW` | Login auto Sejda |
+| `BETTERCONTACT_PSW` | Login auto BetterContact |
+| `FULLENRICH_PSW` | Login auto Fullenrich |
+| `GMAIL_PSW` | Login auto Gmail |
+
+> **Note** : Le bot fonctionne en mode CDP — tu te connectes manuellement aux sites dans Chrome avant de lancer. Les mots de passe et emails ne sont qu'un filet de sécurité si la session expire en cours d'exécution.
 
 ---
 

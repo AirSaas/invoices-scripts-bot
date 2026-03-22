@@ -42,9 +42,10 @@ async function handleLogin(page) {
   
   // Rellenar el email (usar el email del perfil de Chrome)
   if (!process.env.FULLENRICH_EMAIL) {
-    throw new Error('FULLENRICH_EMAIL environment variable is required. Please set it in your .env file.');
+    log(`${SITE_NAME.toUpperCase()} WARNING: FULLENRICH_EMAIL not set - cannot auto-login. Please connect manually via CDP.`);
+    throw new Error('Session expired and no credentials available for auto-login. Connect manually via CDP first.');
   }
-  
+
   const emailToUse = process.env.FULLENRICH_EMAIL;
   await emailField.click();
   await emailField.fill(emailToUse);
