@@ -1,6 +1,6 @@
 # Invoices Bot
 
-Bot qui télécharge automatiquement les factures depuis 6 plateformes SaaS, puis les envoie par email via Gmail.
+Bot qui télécharge automatiquement les factures depuis 6 plateformes SaaS via Playwright + Chrome.
 
 **Sites supportés** : Dropcontact, Fullenrich, Hyperline, BetterContact, Sejda, Dedupe
 
@@ -57,10 +57,25 @@ SITE_FILTER: AI selected → bettercontact
 
 ### 5. Résultat
 
-- Les factures sont téléchargées dans `factures/<nom-du-site>/`
-- Un email récapitulatif avec les pièces jointes est envoyé via Gmail
+- Chaque exécution crée un dossier unique : `factures/YYYY-MM-DD_HHhMM/`
+- Les factures sont nommées `YYYY-MM-DD_provider_nom-original.ext` (ex: `2026-03-22_dropcontact_invoice_123.pdf`)
+- Relancer le bot le même jour ne risque pas d'écraser les téléchargements précédents
 - Les logs texte sont dans `logs/log-YYYY-MM-DD.txt`
 - Les logs JSON structurés dans `logs/execution-{timestamp}.json`
+
+Exemple de structure :
+
+```
+factures/
+  2026-03-22_14h35/
+    dropcontact/
+      2026-03-22_dropcontact_invoice_123.pdf
+    hyperline/
+      2026-03-22_hyperline_receipt_001.pdf
+  2026-03-22_16h20/
+    dropcontact/
+      2026-03-22_dropcontact_invoice_123.pdf
+```
 
 ---
 
@@ -70,8 +85,6 @@ SITE_FILTER: AI selected → bettercontact
 |---|---|
 | `OPENAI_API_KEY` | Clé API OpenAI (utilisée pour la détection de sélecteurs et le filtre de sites) |
 | `CDP_PORT` | Port Chrome DevTools Protocol (défaut: 9222) |
-| `GMAIL_COMPOSE_URL` | URL de composition Gmail |
-| `RECIPIENT_EMAIL` | Email destinataire des factures |
 | `FULLENRICH_EMAIL/PSW` | Credentials Fullenrich |
 | `BETTERCONTACT_EMAIL/PSW` | Credentials BetterContact |
 | `SEJDA_EMAIL/PSW` | Credentials Sejda |
@@ -101,12 +114,11 @@ utils/
   invoiceDownloader.js         Boucle download + pagination IA
   selectorAI.js                3 appels OpenAI (candidates, selectors, pagination)
   download.js                  Download unitaire (click, event, fallback href)
-  emailSender.js               Envoi Gmail avec pièces jointes
-  folderManager.js             Création des dossiers requis
+  folderManager.js             Création du dossier d'exécution horodaté
   executionLogger.js           Logs JSON structurés par exécution
   logger.js                    Logs texte dans fichier + console
 
-factures/                      Factures téléchargées (par site)
+factures/                      Factures téléchargées (par run horodaté, par site)
 logs/                          Logs texte et JSON
 ```
 
@@ -124,7 +136,7 @@ main.js
   │              ├─ attemptDownloads()        Download 1 par 1
   │              ├─ findPaginationElement()   AI #3 : détecte la pagination
   │              └─ click next / scroll       Passe à la page suivante
-  └─ sendEmail()               Envoie les factures par Gmail
+  └─ log results               Résumé des téléchargements
 ```
 
 ### Options de download
@@ -147,13 +159,12 @@ downloadedFiles = await downloadAllInvoices(page, downloadPath, SITE_NAME, execu
 
 ## Ajouter un nouveau site
 
-5 fichiers à modifier :
+4 fichiers à modifier :
 
 1. **Créer** `sites/{nom}.js` — copier le pattern d'un site existant, adapter login + URL
 2. **`utils/scraperRunner.js`** — ajouter l'import et l'entrée dans le tableau `allScrapers`
-3. **`utils/folderManager.js`** — ajouter `factures/{nom}` dans `requiredFolders`
+3. **`utils/folderManager.js`** — ajouter le nom du site dans `this.sites`
 4. **`auth.js`** — ajouter l'URL dans `authUrls`
-5. **`utils/emailSender.js`** — ajouter dans `expectedSites` de `generateDynamicEmailBody`
 
 Le filtre de sites (`siteFilter.js`) se met à jour automatiquement : la liste `AVAILABLE_SITES` doit inclure le nouveau nom, et le prompt système décrit le contexte de chaque site.
 
