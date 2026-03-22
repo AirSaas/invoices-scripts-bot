@@ -3,8 +3,61 @@ const path = require('path');
 const { log } = require('./logger');
 
 /**
+ * Sanitize a filename: remove query params, invalid chars, ensure non-empty.
+ */
+function sanitizeFilename(raw, fallbackIndex) {
+  let name = raw || '';
+  // Strip query params and hash
+  name = name.split('?')[0].split('#')[0];
+  name = path.basename(name);
+  // Remove invalid filesystem chars
+  name = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
+  return name || `file_${fallbackIndex}.tmp`;
+}
+
+/**
+ * Safely write a buffer to disk. Returns { success, filePath, fileSize, error }.
+ */
+function safeWriteFile(filePath, buffer) {
+  try {
+    fs.writeFileSync(filePath, buffer);
+    const fileSize = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
+    log(`DOWNLOAD_WRITE_OK: ${path.basename(filePath)} — ${fileSize} bytes on disk`);
+    return { success: true, fileSize };
+  } catch (e) {
+    log(`DOWNLOAD_WRITE_ERROR: ${filePath} — ${e.message}`);
+    return { success: false, fileSize: 0, error: e.message };
+  }
+}
+
+/**
+ * Fetch a URL via Playwright request and validate the response.
+ * Returns { ok, buffer, filename, contentType, status, error }.
+ */
+async function safeFetch(page, url, fallbackIndex) {
+  try {
+    const response = await page.context().request.get(url);
+    const status = response.status();
+    const headers = response.headers();
+    const contentType = headers['content-type'] || 'unknown';
+
+    log(`DOWNLOAD_HTTP: status=${status} content-type="${contentType}" url=${url}`);
+
+    if (status < 200 || status >= 400) {
+      return { ok: false, error: `HTTP ${status} for ${url}` };
+    }
+
+    const buffer = await response.body();
+    const filename = sanitizeFilename(path.basename(url), fallbackIndex);
+    return { ok: true, buffer, filename, contentType, status };
+  } catch (e) {
+    return { ok: false, error: `Fetch failed: ${e.message}` };
+  }
+}
+
+/**
  * Download a single file from a page element.
- * Returns { success, filePath, filename, error }
+ * Returns { success, filePath, filename, fileSize, error }
  */
 async function downloadOneFile(page, element, selector, downloadPath, index) {
   try {
@@ -25,41 +78,45 @@ async function downloadOneFile(page, element, selector, downloadPath, index) {
 
       log(`DOWNLOAD_NO_EVENT [${index}] href=${href}, onclick=${onclick}`);
 
-      if (href && (href.includes('.pdf') || href.includes('.csv') || href.includes('.xlsx'))) {
+      if (href && (href.endsWith('.pdf') || href.endsWith('.csv') || href.endsWith('.xlsx') ||
+                   href.includes('.pdf?') || href.includes('.csv?') || href.includes('.xlsx?'))) {
         let absoluteHref = href;
-        if (href.startsWith('./') || href.startsWith('../') || !href.includes('://')) {
+        if (!href.includes('://')) {
           const currentUrl = page.url();
           const baseUrl = new URL(currentUrl).origin + new URL(currentUrl).pathname.replace(/\/[^\/]*$/, '/');
           absoluteHref = new URL(href, baseUrl).href;
         }
 
-        log(`DOWNLOAD_DIRECT_FETCH [${index}] ${absoluteHref}`);
-        const response = await page.context().request.get(absoluteHref);
-        const fileBuffer = await response.body();
-        const filename = path.basename(absoluteHref.split('?')[0]) || `file_${index}.tmp`;
+        const fetchResult = await safeFetch(page, absoluteHref, index);
+        if (!fetchResult.ok) return { success: false, error: fetchResult.error };
+
+        const filename = sanitizeFilename(fetchResult.filename, index);
         const filePath = path.join(downloadPath, filename);
-        fs.writeFileSync(filePath, fileBuffer);
-        log(`DOWNLOAD_OK [${index}] (direct fetch) ${filename} — ${fileBuffer.length} bytes`);
-        return { success: true, filePath, filename, fileSize: fileBuffer.length };
+        const writeResult = safeWriteFile(filePath, fetchResult.buffer);
+        if (!writeResult.success) return { success: false, error: writeResult.error };
+
+        return { success: true, filePath, filename, fileSize: writeResult.fileSize };
       }
 
       if (onclick && onclick.includes('window.open')) {
         const urlMatch = onclick.match(/window\.open\(['"]([^'"]+)['"]/);
         if (urlMatch) {
           let url = urlMatch[1];
-          if (url.startsWith('./') || url.startsWith('../') || !url.includes('://')) {
+          if (!url.includes('://')) {
             const currentUrl = page.url();
             const baseUrl = new URL(currentUrl).origin + new URL(currentUrl).pathname.replace(/\/[^\/]*$/, '/');
             url = new URL(url, baseUrl).href;
           }
-          log(`DOWNLOAD_ONCLICK_FETCH [${index}] ${url}`);
-          const response = await page.context().request.get(url);
-          const fileBuffer = await response.body();
-          const filename = path.basename(url.split('?')[0]) || `file_${index}.tmp`;
+
+          const fetchResult = await safeFetch(page, url, index);
+          if (!fetchResult.ok) return { success: false, error: fetchResult.error };
+
+          const filename = sanitizeFilename(fetchResult.filename, index);
           const filePath = path.join(downloadPath, filename);
-          fs.writeFileSync(filePath, fileBuffer);
-          log(`DOWNLOAD_OK [${index}] (onclick fetch) ${filename} — ${fileBuffer.length} bytes`);
-          return { success: true, filePath, filename, fileSize: fileBuffer.length };
+          const writeResult = safeWriteFile(filePath, fetchResult.buffer);
+          if (!writeResult.success) return { success: false, error: writeResult.error };
+
+          return { success: true, filePath, filename, fileSize: writeResult.fileSize };
         }
       }
 
@@ -71,31 +128,40 @@ async function downloadOneFile(page, element, selector, downloadPath, index) {
 
     if (result.suggestedFilename && typeof result.suggestedFilename === 'function') {
       const download = result;
-      filename = download.suggestedFilename();
+      filename = sanitizeFilename(download.suggestedFilename(), index);
       filePath = path.join(downloadPath, filename);
       await download.saveAs(filePath);
       fileSize = fs.existsSync(filePath) ? fs.statSync(filePath).size : 0;
       log(`DOWNLOAD_OK [${index}] (direct) ${filename} — ${fileSize} bytes`);
-    } else if (result.constructor.name === 'Page' && typeof result.waitForLoadState === 'function') {
+    } else if (typeof result.waitForLoadState === 'function') {
+      // It's a Page (popup/new tab)
       const newPage = result;
       try {
         await newPage.waitForLoadState('domcontentloaded');
         const url = newPage.url();
-        filename = path.basename(url) || `file_${index}.tmp`;
         log(`DOWNLOAD_NEW_TAB [${index}] URL: ${url}`);
-        const response = await newPage.context().request.get(url);
-        const fileBuffer = await response.body();
+
+        const fetchResult = await safeFetch(newPage, url, index);
+        if (!fetchResult.ok) {
+          await newPage.close();
+          return { success: false, error: fetchResult.error };
+        }
+
+        filename = sanitizeFilename(fetchResult.filename, index);
         filePath = path.join(downloadPath, filename);
-        fs.writeFileSync(filePath, fileBuffer);
-        fileSize = fileBuffer.length;
-        log(`DOWNLOAD_OK [${index}] (new tab) ${filename} — ${fileSize} bytes`);
+        const writeResult = safeWriteFile(filePath, fetchResult.buffer);
+        fileSize = writeResult.fileSize;
         await newPage.close();
+
+        if (!writeResult.success) return { success: false, error: writeResult.error };
+
+        log(`DOWNLOAD_OK [${index}] (new tab) ${filename} — ${fileSize} bytes`);
       } catch (pageError) {
-        if (newPage.close && typeof newPage.close === 'function') await newPage.close();
+        if (typeof newPage.close === 'function') await newPage.close();
         return { success: false, error: `New tab download failed: ${pageError.message}` };
       }
     } else {
-      return { success: false, error: `Unknown result type: ${result.constructor.name}` };
+      return { success: false, error: `Unknown download result type` };
     }
 
     return { success: true, filePath, filename, fileSize };
@@ -201,28 +267,47 @@ async function attemptDownloads(page, selectors, downloadPath, executionLog, sit
   log(`DOWNLOAD_SELECTORS_TOTAL: ${allSelectors.length} (${selectors.length} AI + ${fallbackSelectors.length} fallback)`);
 
   const triedSelectors = new Set();
+  let duplicateCount = 0;
+  let matchedSelectorCount = 0;
 
   for (const selector of allSelectors) {
-    if (triedSelectors.has(selector)) continue;
+    if (triedSelectors.has(selector)) {
+      duplicateCount++;
+      continue;
+    }
     triedSelectors.add(selector);
 
-    let elements;
+    let elementCount;
     try {
-      elements = await page.locator(selector).elementHandles();
+      elementCount = await page.locator(selector).count();
     } catch (e) {
       log(`DOWNLOAD_SELECTOR_ERROR: "${selector}" — ${e.message}`);
       continue;
     }
 
-    if (elements.length === 0) continue;
+    if (elementCount === 0) continue;
 
-    log(`DOWNLOAD_FOUND: ${elements.length} element(s) for "${selector}"`);
+    matchedSelectorCount++;
+    log(`DOWNLOAD_FOUND: ${elementCount} element(s) for "${selector}"`);
 
-    // Download each element one by one
-    for (let i = 0; i < elements.length; i++) {
-      log(`DOWNLOAD_ATTEMPT: [${downloadedFiles.length + 1}] element ${i + 1}/${elements.length} of "${selector}"`);
+    // Download each element one by one, re-fetching by index to avoid stale handles
+    for (let i = 0; i < elementCount; i++) {
+      log(`DOWNLOAD_ATTEMPT: [${downloadedFiles.length + 1}] element ${i + 1}/${elementCount} of "${selector}"`);
 
-      const result = await downloadOneFile(page, elements[i], selector, downloadPath, downloadedFiles.length + 1);
+      let element;
+      try {
+        element = await page.locator(selector).nth(i).elementHandle();
+      } catch (e) {
+        log(`DOWNLOAD_STALE_ELEMENT: [${i + 1}] "${selector}" — ${e.message}`);
+        continue;
+      }
+
+      if (!element) {
+        log(`DOWNLOAD_ELEMENT_GONE: [${i + 1}] "${selector}" — element no longer exists`);
+        continue;
+      }
+
+      const result = await downloadOneFile(page, element, selector, downloadPath, downloadedFiles.length + 1);
 
       if (result.success) {
         downloadedFiles.push({
@@ -233,7 +318,6 @@ async function attemptDownloads(page, selectors, downloadPath, executionLog, sit
         });
         log(`DOWNLOAD_SAVED: [${downloadedFiles.length}] ${result.filename} — saved to disk immediately`);
 
-        // Log to JSON execution log if available
         if (executionLog && siteName) {
           executionLog.logDownload(siteName, {
             filename: result.filename,
@@ -243,7 +327,7 @@ async function attemptDownloads(page, selectors, downloadPath, executionLog, sit
           });
         }
 
-        // Small delay between downloads to avoid overwhelming the server
+        // Small delay between downloads
         await page.waitForTimeout(1000);
       } else {
         log(`DOWNLOAD_FAILED: [element ${i + 1}] ${result.error}`);
@@ -257,14 +341,17 @@ async function attemptDownloads(page, selectors, downloadPath, executionLog, sit
       }
     }
 
-    // If we found matching elements and downloaded at least one file,
-    // stop trying more selectors (they likely point to the same elements)
+    // If we found matching elements and downloaded at least one file, stop
     if (downloadedFiles.length > 0) {
-      log(`DOWNLOAD_COMPLETE: ${downloadedFiles.length} file(s) downloaded with selector "${selector}", stopping selector search`);
+      log(`DOWNLOAD_COMPLETE: ${downloadedFiles.length} file(s) with selector "${selector}"`);
       break;
     }
   }
 
+  if (duplicateCount > 0) {
+    log(`DOWNLOAD_DUPLICATES_SKIPPED: ${duplicateCount} duplicate selector(s)`);
+  }
+  log(`DOWNLOAD_STATS: ${matchedSelectorCount} selector(s) matched elements out of ${triedSelectors.size} unique tried`);
   log(`DOWNLOAD_TOTAL: ${downloadedFiles.length} file(s) downloaded on this page`);
   return downloadedFiles;
 }

@@ -8,11 +8,21 @@ const openai = new OpenAI({
 const model = "gpt-4o-mini";
 //const model = "gpt-5";
 
+function safeParseJSON(raw, fallback, label) {
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    log(`selectorAI JSON_PARSE_ERROR [${label}]: ${e.message}`);
+    log(`selectorAI RAW_RESPONSE [${label}]: ${raw ? raw.substring(0, 500) : 'null'}`);
+    return fallback;
+  }
+}
+
 async function findCandidateElements(html) {
   const prompt = `Analiza el siguiente HTML y devuelve un array JSON de objetos llamado 'candidates'. Cada objeto debe representar un elemento que probablemente sea un enlace o botón para descargar una factura en PDF o un archivo similar. Incluye solo elementos con texto como "factura", "invoice", "descargar", "download", "PDF", o con atributos href ó onclick a "window.open" que apunten a una descarga.
-  
+
   **Excluye explícitamente cualquier enlace cuyo atributo href comience con 'mailto:'. No nos interesan los vínculos de correo electrónico.**
-  
+
   Para cada elemento, extrae la etiqueta (tag), el texto (text), y todos sus atributos (attributes). El JSON debe estar limpio, sin texto adicional antes o después.`;
   const response = await openai.chat.completions.create({
     model: model,
@@ -28,11 +38,10 @@ async function findCandidateElements(html) {
     ],
     response_format: { type: "json_object" },
   });
-  // La respuesta de la API puede venir como un string JSON que necesita ser parseado.
-  // Asegúrate de que la respuesta contenga los datos esperados.
-  const content = JSON.parse(response.choices[0].message.content);
-  log(`selectorAI CONTENT_FROM_AI ${JSON.stringify(content)}`);
-  return content.candidates || []; // Asumiendo que la IA devuelve un objeto con una clave "candidates"
+  const raw = response.choices[0].message.content;
+  const content = safeParseJSON(raw, { candidates: [] }, 'findCandidateElements');
+  log(`selectorAI CANDIDATES_COUNT: ${(content.candidates || []).length}`);
+  return content.candidates || [];
 }
 
 async function getCssSelectors(candidates) {
@@ -78,8 +87,14 @@ Devuelve exactamente un máximo de 8 selectores como un array de strings. El JSO
     ],
     response_format: { type: "json_object" },
   });
-  const content = JSON.parse(response.choices[0].message.content);
-  return content.selectors || []; // Asumiendo que la IA devuelve una clave "selectors"
+  const raw = response.choices[0].message.content;
+  const content = safeParseJSON(raw, { selectors: [] }, 'getCssSelectors');
+  const selectors = content.selectors || [];
+  log(`selectorAI SELECTORS_COUNT: ${selectors.length}`);
+  if (selectors.length > 0) {
+    log(`selectorAI SELECTORS: ${selectors.join(', ')}`);
+  }
+  return selectors;
 }
 
 async function findPaginationElement(html) {
@@ -123,9 +138,20 @@ RULES:
     ],
     response_format: { type: "json_object" },
   });
-  const content = JSON.parse(response.choices[0].message.content);
-  log(`selectorAI PAGINATION_RESULT ${JSON.stringify(content)}`);
-  return content;
+  const raw = response.choices[0].message.content;
+  const defaultPagination = { found: false, type: "none", selector: null, reason: "JSON parse failed" };
+  const content = safeParseJSON(raw, defaultPagination, 'findPaginationElement');
+
+  // Validate and normalize the response
+  const result = {
+    found: content.found === true,
+    type: content.type || "none",
+    selector: content.selector || null,
+    reason: content.reason || "unknown",
+  };
+
+  log(`selectorAI PAGINATION_RESULT found=${result.found} type="${result.type}" selector="${result.selector}" reason="${result.reason}"`);
+  return result;
 }
 
 module.exports = { findCandidateElements, getCssSelectors, findPaginationElement };

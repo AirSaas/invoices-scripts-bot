@@ -68,6 +68,7 @@ async function downloadAllInvoices(page, downloadPath, siteName, executionLog, o
   const filterHtml = options.filterHtml || defaultFilterHtml;
   const allDownloadedFiles = [];
   let currentPage = 1;
+  let pagesProcessed = 0;
 
   log(`${siteName.toUpperCase()} INVOICE_DOWNLOADER: Starting download loop`);
 
@@ -75,11 +76,20 @@ async function downloadAllInvoices(page, downloadPath, siteName, executionLog, o
     log(`${siteName.toUpperCase()} PAGE_${currentPage}: Processing page ${currentPage}`);
 
     // 1. Get and filter HTML
-    const html = await page.content();
-    log(`${siteName.toUpperCase()} PAGE_${currentPage}: HTML fetched (${html.length} chars)`);
+    let html;
+    try {
+      html = await page.content();
+      log(`${siteName.toUpperCase()} PAGE_${currentPage}: HTML fetched (${html.length} chars)`);
+    } catch (pageError) {
+      log(`${siteName.toUpperCase()} PAGE_${currentPage}: page.content() FAILED — ${pageError.message}`);
+      if (executionLog) {
+        executionLog.logError(siteName, { phase: 'navigation', message: `page.content() failed: ${pageError.message}` });
+      }
+      break;
+    }
 
     const filteredHtml = filterHtml(html);
-    log(`${siteName.toUpperCase()} PAGE_${currentPage}: Filtered HTML (${filteredHtml.length} chars)`);
+    log(`${siteName.toUpperCase()} PAGE_${currentPage}: Filtered HTML (${filteredHtml.length} chars, reduced from ${html.length})`);
 
     if (executionLog) {
       executionLog.logPageProcessed(siteName, currentPage, page.url(), null);
@@ -131,6 +141,7 @@ async function downloadAllInvoices(page, downloadPath, siteName, executionLog, o
     const pageFiles = await attemptDownloads(page, selectors, downloadPath, executionLog, siteName);
     const filePaths = pageFiles.map(f => f.filePath);
     allDownloadedFiles.push(...filePaths);
+    pagesProcessed++;
     log(`${siteName.toUpperCase()} PAGE_${currentPage}: Downloaded ${pageFiles.length} file(s) (total: ${allDownloadedFiles.length})`);
 
     // 5. AI call #3 — check for pagination
@@ -141,6 +152,7 @@ async function downloadAllInvoices(page, downloadPath, siteName, executionLog, o
       // Re-fetch HTML after downloads (DOM may have changed)
       const currentHtml = await page.content();
       const filteredCurrentHtml = filterHtml(currentHtml);
+      log(`${siteName.toUpperCase()} PAGE_${currentPage}: Pagination HTML (${filteredCurrentHtml.length} chars)`);
       paginationResult = await findPaginationElement(filteredCurrentHtml);
       if (executionLog) {
         executionLog.logAiCall(siteName, 'findPagination', filteredCurrentHtml, paginationResult);
@@ -167,21 +179,29 @@ async function downloadAllInvoices(page, downloadPath, siteName, executionLog, o
     if (paginationResult.type === 'infinite_scroll') {
       // Scroll to bottom and wait for new content
       log(`${siteName.toUpperCase()} PAGE_${currentPage}: Infinite scroll — scrolling down...`);
-      const previousHeight = await page.evaluate(() => document.body.scrollHeight);
-      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await page.waitForTimeout(3000);
-      const newHeight = await page.evaluate(() => document.body.scrollHeight);
+      try {
+        const previousHeight = await page.evaluate(() => document.body.scrollHeight);
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+        await page.waitForTimeout(3000);
+        const newHeight = await page.evaluate(() => document.body.scrollHeight);
 
-      if (newHeight === previousHeight) {
-        log(`${siteName.toUpperCase()} PAGE_${currentPage}: No new content after scroll — done`);
+        if (newHeight === previousHeight) {
+          log(`${siteName.toUpperCase()} PAGE_${currentPage}: No new content after scroll — done`);
+          if (executionLog) {
+            executionLog.logPagination(siteName, { detected: true, action: 'scroll', pageNumber: currentPage });
+          }
+          break;
+        }
+
         if (executionLog) {
-          executionLog.logPagination(siteName, { detected: true, action: 'scroll', pageNumber: currentPage });
+          executionLog.logPagination(siteName, { detected: true, selector: null, action: 'scroll', pageNumber: currentPage });
+        }
+      } catch (scrollError) {
+        log(`${siteName.toUpperCase()} PAGE_${currentPage}: Scroll FAILED — ${scrollError.message}`);
+        if (executionLog) {
+          executionLog.logError(siteName, { phase: 'pagination_click', message: `scroll failed: ${scrollError.message}` });
         }
         break;
-      }
-
-      if (executionLog) {
-        executionLog.logPagination(siteName, { detected: true, selector: null, action: 'scroll', pageNumber: currentPage });
       }
     } else if (paginationResult.selector) {
       // Click the next page element
@@ -225,7 +245,7 @@ async function downloadAllInvoices(page, downloadPath, siteName, executionLog, o
     log(`${siteName.toUpperCase()} WARNING: Reached max page limit (${MAX_PAGES})`);
   }
 
-  log(`${siteName.toUpperCase()} INVOICE_DOWNLOADER: Finished — ${allDownloadedFiles.length} total file(s) across ${currentPage} page(s)`);
+  log(`${siteName.toUpperCase()} INVOICE_DOWNLOADER: Finished — ${allDownloadedFiles.length} total file(s) across ${pagesProcessed} page(s)`);
   return allDownloadedFiles;
 }
 
