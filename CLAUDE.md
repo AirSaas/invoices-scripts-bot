@@ -74,7 +74,7 @@ Quand l'utilisateur demande d'ajouter un site, **poser ces 3 questions AVANT de 
 
 1. **Nom du site + URL billing** — "Quel est le nom du site et l'URL de la page factures/billing ?"
 2. **Pour quel(s) utilisateur(s) ?** — Lister les users disponibles (lire `users.config.js`). Exemple : "Pour qui ? Users disponibles : Bertran, Simon, Matthieu"
-3. **Nombre de factures spécifique ?** — "Le nombre de factures par défaut est 3 (batch) / 12 (all). Ce site a-t-il un nombre différent ?" Si oui → ajouter l'override dans `SITE_CONFIG` de `utils/scraperRunner.js`.
+3. **Nombre de factures spécifique ?** — "Le nombre de factures par défaut est 3 (batch) / 12 (all). Ce site a-t-il un nombre précis à récupérer (pour le mode cron/cible) ?" Si oui → ajouter `cible: N` dans `SITE_CONFIG` de `utils/scraperRunner.js`.
 
 ### Fichiers à modifier (4 fichiers)
 

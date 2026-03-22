@@ -16,10 +16,14 @@ const SCRAPER_REGISTRY = {
 const MODE_DEFAULTS = {
   batch: 3,
   all: 12,
+  // Note: 'cible' has NO default — only sites with an explicit cible value in SITE_CONFIG will run.
 };
 
-// Per-site overrides (optional). Set batch/all to override the default for a specific site.
-// Example: { batch: 5, all: 20 }
+// Per-site overrides (optional). Set batch/all/cible to override the default for a specific site.
+// - batch/all: override the global default (3/12)
+// - cible: nb précis de factures à fetch. Sites SANS cible sont skippés en mode cible.
+//   Usage cron : `node main.js "bertran cible"` → ne lance que les sites configurés.
+// Example: { batch: 5, all: 20, cible: 5 }
 const SITE_CONFIG = {
   dropcontact: {},
   fullenrich: {},
@@ -31,9 +35,13 @@ const SITE_CONFIG = {
 
 /**
  * Get maxInvoices for a site based on mode and per-site config.
+ * Returns null in 'cible' mode if the site has no cible config (= skip this site).
  */
 function getMaxInvoices(siteName, mode) {
   const siteConf = SITE_CONFIG[siteName] || {};
+  if (mode === 'cible') {
+    return siteConf.cible ?? null;
+  }
   return siteConf[mode] ?? MODE_DEFAULTS[mode] ?? MODE_DEFAULTS.batch;
 }
 
@@ -74,6 +82,10 @@ async function runAllScrapers(browser, executionLog, siteFilter = [], folderMana
 
     try {
       const maxInvoices = getMaxInvoices(siteName, mode);
+      if (maxInvoices === null) {
+        log(`SKIP ${scraper.name.toUpperCase()}: no 'cible' config for this site`);
+        continue;
+      }
       log(`===== EXECUTING ${scraper.name.toUpperCase()} SCRAPER (max: ${maxInvoices} invoices) =====`);
       const files = await scraper.bot.run(browser, executionLog, folderManager, { maxInvoices });
 

@@ -191,8 +191,32 @@ main.js
 
 | Option | Défaut | Description |
 |---|---|---|
-| `maxInvoices` | 3 (batch) / 12 (all) | Nombre max de factures par site, selon le mode |
+| `maxInvoices` | 3 (batch) / 12 (all) / configuré (cible) | Nombre max de factures par site, selon le mode |
 | `filterHtml` | `defaultFilterHtml` | Fonction custom pour filtrer le HTML avant les appels IA |
+
+### Modes de téléchargement
+
+| Mode | Défaut | Description |
+|---|---|---|
+| `batch` | 3 | Petit lot de factures récentes. Mode par défaut. |
+| `all` | 12 | Toutes les factures disponibles. |
+| `cible` | — | Uniquement les sites avec un `cible: N` configuré dans `SITE_CONFIG`. Les autres sont skippés. |
+
+Le mode **cible** est conçu pour les **cron jobs** : il ne lance que les sites qui ont un nombre précis de factures à récupérer, configuré dans `SITE_CONFIG` de `utils/scraperRunner.js`.
+
+```bash
+# Cron : ne fetch que les sites avec un nb cible configuré
+node main.js "bertran cible"
+```
+
+Pour configurer un site en mode cible, ajouter `cible: N` dans `SITE_CONFIG` :
+
+```js
+const SITE_CONFIG = {
+  dropcontact: { cible: 5 },    // → lancé en mode cible avec max 5 factures
+  fullenrich: {},                // → skippé en mode cible
+};
+```
 
 ---
 
@@ -204,7 +228,7 @@ Avant de coder, il faut connaître :
 
 1. **Nom du site** + **URL de la page factures/billing**
 2. **Pour quel(s) utilisateur(s)** — les users dispos sont dans `users.config.js`
-3. **Nombre de factures spécifique ?** — par défaut : 3 (batch) / 12 (all). Si le site a un nombre différent, on l'ajoute dans `SITE_CONFIG` de `utils/scraperRunner.js`
+3. **Nombre de factures spécifique ?** — par défaut : 3 (batch) / 12 (all). Si le site a un nombre précis, on l'ajoute dans `SITE_CONFIG` de `utils/scraperRunner.js` (champ `cible: N` pour le mode cron)
 
 ### Étape 2 : Modifier 4 fichiers
 

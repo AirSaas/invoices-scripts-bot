@@ -31,7 +31,7 @@ function ask(question) {
  *
  * @param {string} userInput - Natural language input (e.g. "batch drop et hyperline")
  * @param {string[]} availableSites - Sites available for the current user
- * @returns {{ sites: string[], mode: 'batch'|'all' }} Parsed sites and download mode
+ * @returns {{ sites: string[], mode: 'batch'|'all'|'cible' }} Parsed sites and download mode
  */
 async function parseSiteFilter(userInput, availableSites = []) {
   if (!userInput || !userInput.trim()) {
@@ -68,8 +68,9 @@ RÈGLES :
 MODE DE TÉLÉCHARGEMENT :
 - "batch" : télécharge un petit lot de factures (par défaut 3). Mots-clés : "batch", "lot", "quelques", "les dernières", "rapide", "quick".
 - "all" : télécharge toutes les factures disponibles (par défaut 12). Mots-clés : "all", "tout", "toutes", "complet", "full download", "everything".
+- "cible" : télécharge uniquement les sites qui ont un nombre précis de factures configuré. Les autres sites sont ignorés. Mots-clés : "cible", "précis", "target", "fixe", "cron".
 - Si l'utilisateur ne précise pas le mode, utilise "batch" par défaut.
-- Le champ "mode" doit TOUJOURS être "batch" ou "all", jamais null dans la réponse finale.`;
+- Le champ "mode" doit TOUJOURS être "batch", "all" ou "cible", jamais null dans la réponse finale.`;
 
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -118,7 +119,7 @@ MODE DE TÉLÉCHARGEMENT :
 
     // AI returned sites + mode
     const sites = (parsed.sites || []).filter(s => availableSites.includes(s));
-    const mode = parsed.mode === 'all' ? 'all' : 'batch';
+    const mode = ['all', 'cible'].includes(parsed.mode) ? parsed.mode : 'batch';
     if (sites.length > 0) {
       log(`SITE_FILTER: AI selected → ${sites.join(', ')} (mode: ${mode})`);
     } else {
