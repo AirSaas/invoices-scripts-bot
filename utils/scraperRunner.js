@@ -10,6 +10,8 @@ const SCRAPER_REGISTRY = {
   bettercontact: { name: 'BetterContact',  module: '../sites/bettercontact' },
   sejda:         { name: 'Sejda',          module: '../sites/sejda' },
   dedupe:        { name: 'Dedupe',         module: '../sites/dedupe' },
+  claude:        { name: 'Claude',        module: '../sites/claude' },
+  ubereats:      { name: 'UberEats',      module: '../sites/ubereats' },
 };
 
 // Download mode defaults
@@ -29,6 +31,8 @@ const SITE_CONFIG = {
   bettercontact: {},
   sejda: {},
   dedupe: {},
+  claude: { target: 200 },
+  ubereats: { target: 25 },
 };
 
 /**

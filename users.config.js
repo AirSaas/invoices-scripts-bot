@@ -1,7 +1,7 @@
 const USERS = {
   bertran: {
     displayName: 'Bertran',
-    sites: ['dropcontact', 'fullenrich', 'hyperline', 'bettercontact', 'dedupe'],
+    sites: ['dropcontact', 'fullenrich', 'hyperline', 'bettercontact', 'dedupe', 'claude', 'ubereats'],
   },
   simon: {
     displayName: 'Simon',

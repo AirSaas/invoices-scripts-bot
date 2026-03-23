@@ -110,6 +110,18 @@ async function auth() {
         description: "Hyperline billing and invoice page",
       },
       {
+        site: "claude",
+        name: "Claude AI",
+        url: "https://claude.ai/admin-settings/billing",
+        description: "Claude AI billing and invoice page",
+      },
+      {
+        site: "ubereats",
+        name: "Uber Eats",
+        url: "https://www.ubereats.com/fr/orders",
+        description: "Uber Eats order history page",
+      },
+      {
         site: null,
         name: "Gmail",
         url: "https://mail.google.com",
