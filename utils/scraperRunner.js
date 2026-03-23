@@ -12,6 +12,7 @@ const SCRAPER_REGISTRY = {
   dedupe:        { name: 'Dedupe',         module: '../sites/dedupe' },
   claude:        { name: 'Claude',        module: '../sites/claude' },
   ubereats:      { name: 'UberEats',      module: '../sites/ubereats' },
+  lovable:       { name: 'Lovable',      module: '../sites/lovable' },
 };
 
 // Download mode defaults
@@ -33,6 +34,7 @@ const SITE_CONFIG = {
   dedupe: {},
   claude: { target: 200 },
   ubereats: { target: 25 },
+  lovable: {},
 };
 
 /**

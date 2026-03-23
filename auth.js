@@ -122,6 +122,12 @@ async function auth() {
         description: "Uber Eats order history page",
       },
       {
+        site: "lovable",
+        name: "Lovable",
+        url: "https://lovable.dev/settings/billing",
+        description: "Lovable billing and invoice page",
+      },
+      {
         site: null,
         name: "Gmail",
         url: "https://mail.google.com",
